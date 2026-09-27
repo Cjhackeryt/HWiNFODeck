@@ -31,7 +31,7 @@ public sealed class GaugeWidgetTests
 	public void The_widget_type_id_is_qualified_by_the_plugin()
 	{
 		Assert.That(GaugeWidget.WidgetTypeId, Is.EqualTo("gauge"));
-		Assert.That(GaugeWidget.QualifiedWidgetTypeId, Is.EqualTo("com.hwinfo.cjhackeryt::gauge"));
+		Assert.That(GaugeWidget.QualifiedWidgetTypeId, Is.EqualTo("com.cjhackeryt.hwinfodeck::gauge"));
 	}
 
 	[Test]
@@ -255,7 +255,7 @@ public sealed class GaugeRegistrationTests
 	}
 
 	[TestCase("gauge")]
-	[TestCase("com.hwinfo.cjhackeryt::gauge")]
+	[TestCase("com.cjhackeryt.hwinfodeck::gauge")]
 	public async Task A_gauge_widget_surface_is_served_by_the_local_or_qualified_type(string widgetType)
 	{
 		var session = await CreateSessionAsync(WidgetTestSupport.WidgetSurface(widgetType));
@@ -264,7 +264,7 @@ public sealed class GaugeRegistrationTests
 	}
 
 	[TestCase("gauge")]
-	[TestCase("com.hwinfo.cjhackeryt::gauge")]
+	[TestCase("com.cjhackeryt.hwinfodeck::gauge")]
 	public async Task The_widget_picker_preview_is_served_with_a_sample(string widgetType)
 	{
 		var session = await CreateSessionAsync(WidgetTestSupport.PreviewSurface(widgetType));
@@ -280,7 +280,7 @@ public sealed class GaugeRegistrationTests
 	}
 
 	[TestCase("gauge")]
-	[TestCase("com.hwinfo.cjhackeryt::gauge")]
+	[TestCase("com.cjhackeryt.hwinfodeck::gauge")]
 	public async Task A_gauge_config_surface_is_served(string widgetType)
 	{
 		var session = await CreateSessionAsync(WidgetTestSupport.ConfigSurface(widgetType));

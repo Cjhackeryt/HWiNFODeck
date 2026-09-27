@@ -63,7 +63,7 @@ public sealed class GaugeScaleTests
 
 		Assert.That(GaugeScale.ResolveValue(handles, "hwinfo_cpu_usage"), Is.EqualTo(42.5));
 		Assert.That(GaugeScale.ResolveValue(handles, "hwinfo-cpu-usage"), Is.EqualTo(42.5));
-		Assert.That(GaugeScale.ResolveValue(handles, "com.hwinfo.cjhackeryt::hwinfo-cpu-usage"), Is.EqualTo(42.5));
+		Assert.That(GaugeScale.ResolveValue(handles, "com.cjhackeryt.hwinfodeck::hwinfo-cpu-usage"), Is.EqualTo(42.5));
 		Assert.That(GaugeScale.ResolveValue(handles, "other"), Is.EqualTo(12.5));
 		Assert.That(GaugeScale.ResolveValue(handles, "missing"), Is.Null);
 		Assert.That(GaugeScale.ResolveValue(handles, ""), Is.Null);
@@ -77,7 +77,7 @@ public sealed class GaugeScaleTests
 		Assert.That(GaugeScale.OwnLocalId(definitions, "hwinfo_cpu_usage"), Is.EqualTo("hwinfo-cpu-usage"));
 		Assert.That(GaugeScale.OwnLocalId(definitions, "hwinfo-cpu-usage"), Is.EqualTo("hwinfo-cpu-usage"));
 		Assert.That(
-			GaugeScale.OwnLocalId(definitions, "com.hwinfo.cjhackeryt::hwinfo-cpu-usage"),
+			GaugeScale.OwnLocalId(definitions, "com.cjhackeryt.hwinfodeck::hwinfo-cpu-usage"),
 			Is.EqualTo("hwinfo-cpu-usage"));
 		Assert.That(GaugeScale.OwnLocalId(definitions, "other-plugin::var"), Is.Null);
 		Assert.That(GaugeScale.OwnLocalId(definitions, "missing"), Is.Null);
