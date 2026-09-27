@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -24,7 +24,7 @@ jobs:
         run: dotnet tool install --global MacroDeck.Plugin.Cli --version 3.0.0-beta.14
 
       - name: Add .NET tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.dotnet\tools"
 
       - name: Run tests
         run: dotnet test ./tests/HWiNFODeck.Tests/HWiNFODeck.Tests.csproj
@@ -35,4 +35,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" ./artifacts/*.macroDeckPlugin --generate-notes
+        run: |
+          $artifact = Get-ChildItem ./artifacts -Filter *.macroDeckPlugin | Select-Object -First 1
+          if ($null -eq $artifact) { throw 'Plugin package was not produced.' }
+          gh release create $env:GITHUB_REF_NAME $artifact.FullName --generate-notes
