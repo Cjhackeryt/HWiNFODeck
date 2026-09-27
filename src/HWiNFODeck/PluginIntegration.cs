@@ -24,11 +24,31 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
     {
         _logger = logger.ForContext<PluginIntegration>();
         logger.Information("[HWiNFODeck] Plugin loaded");
-        logger.Information("[HWiNFODeck] Version: 0.1.14");
+        logger.Information("[HWiNFODeck] Version: {ManifestVersion}", ReadManifestVersion());
         logger.Information("[HWiNFODeck] Loaded from: {AssemblyPath}", typeof(PluginIntegration).Assembly.Location);
         _service = new HWiNFOSharedMemoryService(logger);
         _variables = new HWiNFOVariableProvider(_service, logger);
     }
+
+    // The manifest is the version source of truth: the assembly version is only the SDK default, and
+    // the release workflow rewrites the manifest from the release tag, so neither tracks a release.
+    private string ReadManifestVersion()
+    {
+        try
+        {
+            var manifestPath = Path.Combine(AppContext.BaseDirectory, "manifest.json");
+            using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            return manifest.RootElement.TryGetProperty("version", out var version) && version.ValueKind == JsonValueKind.String
+                ? version.GetString() ?? "unknown"
+                : "unknown";
+        }
+        catch (Exception exception)
+        {
+            _logger.Debug(exception, "[HWiNFODeck] Manifest version could not be read");
+            return "unknown";
+        }
+    }
+
     public IReadOnlyList<IActionDefinition> Actions => [];
     public IReadOnlyList<VariableDefinition> Variables => _variables.Variables;
     public IReadOnlyList<VariableDefinition> DeclaredVariables => _variables.DeclaredVariables;
