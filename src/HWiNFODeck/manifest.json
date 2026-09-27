@@ -8,10 +8,10 @@
   "repository": "https://github.com/Cjhackeryt/HWiNFODeck",
   "icon": "Assets/icon.svg",
   "entrypoints": {
-    "win-x64": { "executable": "runtimes/win-x64/HWiNFODeck.exe" }
+     "win-x64": { "executable": "runtimes/win-x64/HWiNFODeck.exe" }
   },
   "publisher": {
-    "name": "HWiNFODeck"
+     "name": "cjhackeryt"
   },
   "license": "MIT",
   "compatibility": {
