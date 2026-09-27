@@ -24,12 +24,12 @@ The first package is version `0.1.0`. Each release must increment the version in
 `src/HWiNFODeck/manifest.json`, which is the plugin's single source of truth for
 the version.
 
-## GitHub releases
+## Publishing a release
 
-The `Release` workflow runs tests, builds the unsigned `.macroDeckPlugin` package,
-and attaches it to a GitHub Release when a version tag is pushed. Keep the tag in
-sync with the manifest version (for example, `v1.0.0`). This creates a GitHub
-download; publishing in the Macro Deck plugin ecosystem is a separate step.
+The `Release` workflow submits a published GitHub release to the Macro Deck
+Platform. Keep the release tag in sync with the manifest version (for example,
+`v1.0.0`). The approved build appears in the Creator Portal's build library, where
+it can be reviewed and released to users.
 
 ## Variables
 

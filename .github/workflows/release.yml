@@ -1,41 +1,25 @@
+# Publishing a GitHub release builds the plugin with its tag as the version (written into
+# manifest.json by the workflow) and uploads it to the Macro Deck Platform. The build then waits in the Creator
+# Portal's build library, where a release is started from it.
+#
+# The job runs in the Macro Deck workflow, not here: that is what lets the Platform tell an approved
+# build apart from any other workflow.
+
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
+  release:
+    types: [published]
 
 jobs:
-  release:
-    runs-on: windows-latest
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Install Macro Deck CLI
-        run: dotnet tool install --global MacroDeck.Plugin.Cli --version 3.0.0-beta.14
-
-      - name: Add .NET tools to PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.dotnet\tools"
-
-      - name: Run tests
-        run: dotnet test ./tests/HWiNFODeck.Tests/HWiNFODeck.Tests.csproj
-
-      - name: Build plugin package
-        run: macrodeck-plugin build --source ./src/HWiNFODeck --output ./artifacts
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $artifact = Get-ChildItem ./artifacts -Filter *.macroDeckPlugin | Select-Object -First 1
-          if ($null -eq $artifact) { throw 'Plugin package was not produced.' }
-          gh release create $env:GITHUB_REF_NAME $artifact.FullName --generate-notes
+  publish:
+    uses: Macro-Deck-App/GitHub-Actions/.github/workflows/publish-plugin.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      version: ${{ github.event.release.tag_name }}
+      source: src/HWiNFODeck
+      # Pinned: `--prerelease` would pick 3.0.0-preview.10, which sorts above the newer betas.
+      cli-version: 3.0.0-beta.14
+      changelog: ${{ github.event.release.body }}
