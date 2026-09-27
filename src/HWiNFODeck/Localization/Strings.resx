@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- The default-language file. Every translation is checked against it and the fallback chain ends
+       here, so it is required even for a plugin that ships one language. Add a language by adding
+       Localization/Strings.<culture>.resx beside it (Strings.de.resx, Strings.pt-BR.resx). -->
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="HWiNFO.Description" xml:space="preserve">
+    <value>HWiNFO Shared Memory sensor values</value>
+  </data>
+  <data name="Widgets.Gauge.Name" xml:space="preserve">
+    <value>Gauge</value>
+  </data>
+  <data name="Widgets.Gauge.Description" xml:space="preserve">
+    <value>Arc gauge bound to any variable, with the reading in the middle</value>
+  </data>
+  <data name="Widgets.Gauge.Config.Variable.Label" xml:space="preserve">
+    <value>Variable</value>
+  </data>
+  <data name="Widgets.Gauge.Config.Max.Label" xml:space="preserve">
+    <value>Maximum</value>
+  </data>
+  <data name="Widgets.Gauge.Config.Unit.Label" xml:space="preserve">
+    <value>Unit</value>
+  </data>
+  <data name="Config.Refresh.Title" xml:space="preserve">
+    <value>Refresh rate</value>
+  </data>
+  <data name="Config.Refresh.Description" xml:space="preserve">
+    <value>Set up HWiNFO shared memory for sensor readings:&#10;1. Open HWiNFO.&#10;2. Open Settings.&#10;3. Enable Shared Memory Support and save the setting.&#10;4. Keep HWiNFO running while using HWiNFODeck.&#10;&#10;The refresh interval controls how often gauge widgets re-read their variable.</value>
+  </data>
+  <data name="Config.Refresh.Field.Label" xml:space="preserve">
+    <value>Refresh interval (seconds)</value>
+  </data>
+  <data name="Config.Refresh.Field.Description" xml:space="preserve">
+    <value>Between 0.25 and 60 seconds. Applies to every gauge widget.</value>
+  </data>
+  <data name="Config.Refresh.Field.Invalid" xml:space="preserve">
+    <value>Enter a number between 0.25 and 60.</value>
+  </data>
+</root>

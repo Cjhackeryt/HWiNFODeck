@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Macro Deck CLI
+        run: dotnet tool install --global MacroDeck.Plugin.Cli --version 3.0.0-beta.14
+
+      - name: Add .NET tools to PATH
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Run tests
+        run: dotnet test ./tests/HWiNFODeck.Tests/HWiNFODeck.Tests.csproj
+
+      - name: Build plugin package
+        run: macrodeck-plugin build --source ./src/HWiNFODeck --output ./artifacts
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" ./artifacts/*.macroDeckPlugin --generate-notes

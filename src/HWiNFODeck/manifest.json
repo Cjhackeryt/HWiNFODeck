@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schemas.macro-deck.app/plugin-manifest-v1.schema.json",
+  "manifestVersion": 1,
+  "id": "com.hwinfo.cjhackeryt",
+  "name": "HWiNFODeck",
+  "version": "1.0.0",
+  "description": "Live HWiNFO sensor variables and gauge widgets for Macro Deck 3",
+  "repository": "https://github.com/Cjhackeryt/HWiNFODeck",
+  "icon": "Assets/icon.svg",
+  "entrypoints": {
+    "win-x64": { "executable": "runtimes/win-x64/HWiNFODeck.exe" }
+  },
+  "publisher": {
+    "name": "HWiNFODeck"
+  },
+  "license": "MIT",
+  "compatibility": {
+    "macroDeck": ">=3.0.0-beta.14"
+  }
+}
