@@ -15,7 +15,7 @@ internal sealed record GaugeData(string Variable, double Max, string Unit);
 /// </summary>
 internal static class GaugeScale
 {
-    public const string PluginId = "com.hwinfo.cjhackeryt";
+    public const string PluginId = "com.cjhackeryt.hwinfodeck";
     public const double DefaultMax = 100;
     public const double DefaultRefreshSeconds = 1;
     public const double MinRefreshSeconds = 0.25;

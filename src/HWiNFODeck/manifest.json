@@ -1,7 +1,7 @@
 {
   "$schema": "https://schemas.macro-deck.app/plugin-manifest-v1.schema.json",
   "manifestVersion": 1,
-  "id": "com.hwinfo.cjhackeryt",
+  "id": "com.cjhackeryt.hwinfodeck",
   "name": "HWiNFODeck",
   "version": "1.0.0",
   "description": "Live HWiNFO sensor variables and gauge widgets for Macro Deck 3",
