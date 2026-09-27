@@ -1,0 +1,25 @@
+# Publishing a GitHub release builds the plugin with its tag as the version (written into
+# manifest.json by the workflow) and uploads it to the Macro Deck Platform. The build then waits in the Creator
+# Portal's build library, where a release is started from it.
+#
+# The job runs in the Macro Deck workflow, not here: that is what lets the Platform tell an approved
+# build apart from any other workflow.
+
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    uses: Macro-Deck-App/GitHub-Actions/.github/workflows/publish-plugin.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      version: ${{ github.event.release.tag_name }}
+      source: src/HWiNFODeck
+      # Pinned: `--prerelease` would pick 3.0.0-preview.10, which sorts above the newer betas.
+      cli-version: 3.0.0-beta.14
+      changelog: ${{ github.event.release.body }}
