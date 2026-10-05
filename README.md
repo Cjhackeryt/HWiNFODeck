@@ -62,6 +62,19 @@ Additional variables:
 
   Resolved from HWiNFO drive readings when present; otherwise from the first
   ready fixed OS drive, since HWiNFO drive sensors rarely expose usage.
+- GPU readings, from the first `GPU [#n]` sensor HWiNFO reports:
+  - `hwinfo_gpu_name` (text)
+  - `hwinfo_gpu_usage` (numeric, %) - `GPU Core Load`, `GPU Utilization` or `GPU D3D Usage`
+  - `hwinfo_gpu_temperature`, `hwinfo_gpu_hotspot_temperature`,
+    `hwinfo_gpu_memory_junction_temperature` (numeric, °C)
+  - `hwinfo_gpu_memory_usage` (numeric, %)
+  - `hwinfo_gpu_clock`, `hwinfo_gpu_effective_clock` (numeric, MHz)
+  - `hwinfo_gpu_power` (numeric, W)
+  - `hwinfo_gpu_fan_rpm` (numeric, RPM)
+
+  Labels are matched exactly, so `GPU Temperature` never resolves to
+  `GPU Memory Junction Temperature`, and the fan variable takes the RPM reading
+  rather than the duty-cycle percentage HWiNFO publishes under the same label.
 
 HWiNFO Shared Memory must be enabled in HWiNFO. The service polls one shared-memory
 connection, retains the last valid reading during transient invalid samples, and

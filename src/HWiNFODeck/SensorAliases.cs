@@ -38,6 +38,20 @@ internal static class SensorAliases
         "Drive Free Space", "Free Space", "Available Space", "Free", "Available"
     ];
 
+    // HWiNFO names every graphics sensor "GPU [#n]: <model>". GPU labels are matched exactly rather than
+    // word by word: "GPU Temperature" is also contained in "GPU Memory Junction Temperature".
+    private const string GpuSensorPrefix = "GPU";
+
+    public static readonly string[] GpuUsageLabels = ["GPU Core Load", "GPU Utilization", "GPU D3D Usage"];
+    public static readonly string[] GpuTemperatureLabels = ["GPU Temperature"];
+    public static readonly string[] GpuHotSpotTemperatureLabels = ["GPU Hot Spot Temperature"];
+    public static readonly string[] GpuMemoryJunctionTemperatureLabels = ["GPU Memory Junction Temperature"];
+    public static readonly string[] GpuMemoryUsageLabels = ["GPU Memory Usage"];
+    public static readonly string[] GpuClockLabels = ["GPU Clock"];
+    public static readonly string[] GpuEffectiveClockLabels = ["GPU Effective Clock"];
+    public static readonly string[] GpuPowerLabels = ["GPU Power", "GPU ASIC Power", "Total Board Power"];
+    public static readonly string[] GpuFanLabels = ["GPU Fan1", "GPU Fan"];
+
     public static HWiNFOSensor? FindDownloadReading(IReadOnlyList<HWiNFOSensor> readings) =>
         FindNetworkReading(readings, DownloadPhrases, DownloadWords);
 
@@ -94,6 +108,41 @@ internal static class SensorAliases
 
         return null;
     }
+
+    /// <summary>
+    /// The reading of the first GPU sensor whose label is one of <paramref name="labels"/>, tried in
+    /// order. <paramref name="unitOk"/> tells apart readings HWiNFO publishes twice under one label, such
+    /// as a fan's RPM and its duty cycle in percent.
+    /// </summary>
+    public static HWiNFOSensor? FindGpuReading(
+        IReadOnlyList<HWiNFOSensor> readings,
+        string[] labels,
+        Func<string, bool>? unitOk = null)
+    {
+        var gpuReadings = readings.Where(x => IsGpuSensor(x.SensorName)).ToArray();
+        foreach (var label in labels)
+        {
+            var match = gpuReadings.FirstOrDefault(x =>
+                x.ReadingName.Equals(label, StringComparison.OrdinalIgnoreCase) &&
+                (unitOk is null || unitOk(x.Unit)));
+            if (match is not null)
+                return match;
+        }
+
+        return null;
+    }
+
+    public static string? FindGpuName(IReadOnlyList<HWiNFOSensor> readings) =>
+        readings.FirstOrDefault(x => IsGpuSensor(x.SensorName))?.SensorName;
+
+    public static bool IsTemperatureUnit(string unit) => unit.Contains('C', StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsPercentUnit(string unit) => unit.Trim() == "%";
+
+    public static bool IsRpmUnit(string unit) => unit.Trim().Equals("RPM", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGpuSensor(string sensorName) =>
+        sensorName.StartsWith(GpuSensorPrefix, StringComparison.OrdinalIgnoreCase);
 
     private static HWiNFOSensor? FindNetworkReading(
         IReadOnlyList<HWiNFOSensor> readings,

@@ -10,6 +10,7 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
         "hwinfo_status",
         "hwinfo_version",
         "hwinfo_cpu_name",
+        "hwinfo_gpu_name",
         "macrodeck_version",
         "macrodeck_sdk_version"
     ];
@@ -25,6 +26,15 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
         "hwinfo_cpu_power",
         "hwinfo_cpu_voltage",
         "hwinfo_cpu_fan_rpm",
+        "hwinfo_gpu_usage",
+        "hwinfo_gpu_temperature",
+        "hwinfo_gpu_hotspot_temperature",
+        "hwinfo_gpu_memory_junction_temperature",
+        "hwinfo_gpu_memory_usage",
+        "hwinfo_gpu_clock",
+        "hwinfo_gpu_effective_clock",
+        "hwinfo_gpu_power",
+        "hwinfo_gpu_fan_rpm",
         "hwinfo_network_download_speed_mbps",
         "hwinfo_network_download_speed_mb_s",
         "hwinfo_network_upload_speed_mbps",
@@ -120,6 +130,15 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
                     : VariableReading.Of(cpuReading.SensorName));
         }
 
+        if (variableName.Equals("hwinfo_gpu_name", StringComparison.OrdinalIgnoreCase))
+        {
+            var gpuName = SensorAliases.FindGpuName(_service.Readings);
+            return ValueTask.FromResult(
+                gpuName is null
+                    ? VariableReading.Unavailable
+                    : VariableReading.Of(gpuName));
+        }
+
         var reading = variableName switch
         {
             "hwinfo_cpu_usage" => FindReading("CPU Usage", "Total CPU Usage"),
@@ -130,6 +149,23 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
             "hwinfo_cpu_power" => FindReading("CPU Package Power", "CPU Power"),
             "hwinfo_cpu_voltage" => FindReading("CPU Core Voltage", "Vcore"),
             "hwinfo_cpu_fan_rpm" => FindReading("CPU Fan", "CPU"),
+            "hwinfo_gpu_usage" => FindGpuReading(SensorAliases.GpuUsageLabels, SensorAliases.IsPercentUnit),
+            "hwinfo_gpu_temperature" => FindGpuReading(
+                SensorAliases.GpuTemperatureLabels,
+                SensorAliases.IsTemperatureUnit),
+            "hwinfo_gpu_hotspot_temperature" => FindGpuReading(
+                SensorAliases.GpuHotSpotTemperatureLabels,
+                SensorAliases.IsTemperatureUnit),
+            "hwinfo_gpu_memory_junction_temperature" => FindGpuReading(
+                SensorAliases.GpuMemoryJunctionTemperatureLabels,
+                SensorAliases.IsTemperatureUnit),
+            "hwinfo_gpu_memory_usage" => FindGpuReading(
+                SensorAliases.GpuMemoryUsageLabels,
+                SensorAliases.IsPercentUnit),
+            "hwinfo_gpu_clock" => FindGpuReading(SensorAliases.GpuClockLabels),
+            "hwinfo_gpu_effective_clock" => FindGpuReading(SensorAliases.GpuEffectiveClockLabels),
+            "hwinfo_gpu_power" => FindGpuReading(SensorAliases.GpuPowerLabels),
+            "hwinfo_gpu_fan_rpm" => FindGpuReading(SensorAliases.GpuFanLabels, SensorAliases.IsRpmUnit),
             "hwinfo_drive_used_percent" => FindDriveReading(
                 "used percent",
                 SensorAliases.FindDriveUsedPercent,
@@ -206,6 +242,16 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
             "[Variables] CPU temperature lookup ({ReadingNames}): {Result}",
             string.Join(", ", readingNames),
             reading is null ? "unavailable" : $"{reading.Value} {reading.Unit}");
+        return reading;
+    }
+
+    private HWiNFOSensor? FindGpuReading(string[] labels, Func<string, bool>? unitOk = null)
+    {
+        var reading = SensorAliases.FindGpuReading(_service.Readings, labels, unitOk);
+        _logger.Debug(
+            "[Variables] GPU lookup ({Labels}): {Result}",
+            string.Join(", ", labels),
+            reading is null ? "unavailable" : $"{reading.SensorName} / {reading.ReadingName} = {reading.Value} {reading.Unit}");
         return reading;
     }
 
