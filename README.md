@@ -7,7 +7,7 @@ the plugin does not bundle HWiNFO or another hardware-monitoring library.
 ## Development
 
 The project uses the current Macro Deck 3 plugin template, Macro Deck SDK
-`3.0.0-beta.14`, and .NET `10.0`. Build and test with:
+`3.0.0-beta.15`, and .NET `10.0`. Build and test with:
 
 ```powershell
 dotnet build .\src\HWiNFODeck\HWiNFODeck.csproj
@@ -43,7 +43,7 @@ values are generated.
 Additional variables:
 
 - `macrodeck_sdk_version` (text): the Macro Deck SDK version the plugin was built
-  against, read from the SDK assembly at runtime (`3.0.0-beta.14` today).
+  against, read from the SDK assembly at runtime (`3.0.0-beta.15` today).
 - `macrodeck_version` (text): the Macro Deck 3 version detected from the host
   process that launched the plugin. Populated when the plugin runs under the
   Macro Deck supervisor; unavailable in a plain development run.
