@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "com.cjhackeryt.hwinfodeck",
   "name": "HWiNFODeck",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Live HWiNFO sensor variables and gauge widgets for Macro Deck 3",
   "repository": "https://github.com/Cjhackeryt/HWiNFODeck",
   "icon": "Assets/icon.svg",

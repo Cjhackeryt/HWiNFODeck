@@ -122,7 +122,7 @@ internal abstract class LiveReadingSession : IUiSession, IDisposable, IAsyncDisp
 
     private async ValueTask<double?> ReadOwnAsync(CancellationToken cancellationToken)
     {
-        var localId = GaugeScale.OwnLocalId(_ownVariables.Variables, _variable);
+        var localId = GaugeScale.OwnLocalId(_ownVariables.KnownVariables, _variable);
         if (localId is null)
             return null;
 

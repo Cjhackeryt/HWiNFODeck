@@ -11,7 +11,7 @@
            <!-- Pinned, not floating: the gauge widget needs the beta SDK surface (UiGauge and the
                widget configuration nodes). A lexical float would resolve 3.0.0-preview.10, which is
                API-older and lacks them. -->
-           <MacroDeckSdkVersion Condition="'$(MacroDeckSdkVersion)' == ''">3.0.0-beta.14</MacroDeckSdkVersion>
+           <MacroDeckSdkVersion Condition="'$(MacroDeckSdkVersion)' == ''">3.0.0-beta.15</MacroDeckSdkVersion>
     </PropertyGroup>
 
     <ItemGroup>

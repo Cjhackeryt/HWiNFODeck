@@ -38,6 +38,52 @@ internal static class SensorAliases
         "Drive Free Space", "Free Space", "Available Space", "Free", "Available"
     ];
 
+    private static readonly string[] GraphicsSensorHints =
+    [
+        "gpu", "graphics", "geforce", "radeon", "nvidia", "intel arc"
+    ];
+
+    public static HWiNFOSensor? FindGpuUsage(IReadOnlyList<HWiNFOSensor> readings) =>
+        FindGraphicsReading(
+            readings,
+            x => IsPercent(x.Unit) &&
+                !ContainsAny(x.ReadingName, ["memory", "vram"]) &&
+                ContainsAny(x.ReadingName, ["usage", "load", "utilization", "utilisation"]));
+
+    public static HWiNFOSensor? FindGpuTemperature(IReadOnlyList<HWiNFOSensor> readings) =>
+        FindGraphicsReading(
+            readings,
+            x => x.Unit.Contains('C', StringComparison.OrdinalIgnoreCase) &&
+                ContainsAny(x.ReadingName, ["temperature", "temp"]));
+
+    public static HWiNFOSensor? FindGpuClock(IReadOnlyList<HWiNFOSensor> readings) =>
+        FindGraphicsReading(
+            readings,
+            x => IsFrequency(x.Unit) && x.ReadingName.Contains("clock", StringComparison.OrdinalIgnoreCase));
+
+    public static HWiNFOSensor? FindGpuPower(IReadOnlyList<HWiNFOSensor> readings) =>
+        FindGraphicsReading(
+            readings,
+            x => IsPower(x.Unit) && x.ReadingName.Contains("power", StringComparison.OrdinalIgnoreCase));
+
+    public static HWiNFOSensor? FindVramUsagePercent(IReadOnlyList<HWiNFOSensor> readings) =>
+        FindGraphicsReading(
+            readings,
+            x => IsPercent(x.Unit) &&
+                ContainsAny(x.ReadingName, ["memory", "vram"]) &&
+                ContainsAny(x.ReadingName, ["usage", "used", "load"]));
+
+    public static double? FindVramUsedMegabytes(IReadOnlyList<HWiNFOSensor> readings)
+    {
+        var reading = FindGraphicsReading(
+            readings,
+            x => IsMemoryUnit(x.Unit) &&
+                ContainsAny(x.ReadingName, ["memory", "vram"]) &&
+                ContainsAny(x.ReadingName, ["used", "usage", "allocated", "dedicated"]));
+
+        return reading is null ? null : ToMegabytes(reading.Value, reading.Unit);
+    }
+
     public static HWiNFOSensor? FindDownloadReading(IReadOnlyList<HWiNFOSensor> readings) =>
         FindNetworkReading(readings, DownloadPhrases, DownloadWords);
 
@@ -115,6 +161,13 @@ internal static class SensorAliases
             phrases,
             unitOk);
 
+    private static HWiNFOSensor? FindGraphicsReading(
+        IReadOnlyList<HWiNFOSensor> readings,
+        Func<HWiNFOSensor, bool> accept) =>
+        readings.FirstOrDefault(x =>
+            ContainsAny(x.SensorName, GraphicsSensorHints) &&
+            accept(x));
+
     private static HWiNFOSensor? MatchPhrase(
         IReadOnlyList<HWiNFOSensor> readings,
         string[] phrases,
@@ -135,6 +188,33 @@ internal static class SensorAliases
 
     private static HWiNFOSensor? MatchWords(IReadOnlyList<HWiNFOSensor> readings, string[] words) =>
         readings.FirstOrDefault(x => ContainsAny($"{x.SensorName} {x.ReadingName}", words));
+
+    private static bool IsPercent(string unit) =>
+        unit.Equals("%", StringComparison.OrdinalIgnoreCase) ||
+        unit.Equals("percent", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsFrequency(string unit) =>
+        unit.Equals("MHz", StringComparison.OrdinalIgnoreCase) ||
+        unit.Equals("GHz", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPower(string unit) =>
+        unit.Equals("W", StringComparison.OrdinalIgnoreCase) ||
+        unit.Equals("mW", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsMemoryUnit(string unit) =>
+        unit.Equals("GB", StringComparison.OrdinalIgnoreCase) ||
+        unit.Equals("MB", StringComparison.OrdinalIgnoreCase) ||
+        unit.Equals("KB", StringComparison.OrdinalIgnoreCase) ||
+        unit.Equals("TB", StringComparison.OrdinalIgnoreCase);
+
+    private static double ToMegabytes(double value, string unit) =>
+        unit.ToLowerInvariant() switch
+        {
+            "tb" => value * 1024 * 1024,
+            "gb" => value * 1024,
+            "kb" => value / 1024,
+            _ => value
+        };
 
     private static bool ContainsAny(string text, string[] words) =>
         words.Any(word => text.Contains(word, StringComparison.OrdinalIgnoreCase));

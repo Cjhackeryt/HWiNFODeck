@@ -23,6 +23,7 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
     private MemoryMappedFile? _map;
     private CancellationTokenSource? _polling;
     private Task? _pollTask;
+    private string _catalogSignature = "";
 
     public HWiNFOSharedMemoryService(ILogger logger) => _logger = logger.ForContext<HWiNFOSharedMemoryService>();
     public string Status { get; private set; } = "HWiNFO not running";
@@ -37,6 +38,7 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
                 words.All(word => $"{x.SensorName} {x.ReadingName}".Contains(word, StringComparison.OrdinalIgnoreCase)));
     }
     public event Action? Updated;
+    public event Action? CatalogChanged;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -153,13 +155,24 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
             }
 
             var discovered = ParseEntries(accessor, length, header).ToArray();
+            bool catalogChanged;
             lock (_gate)
             {
+                var signature = string.Join(
+                    '\n',
+                    discovered
+                        .OrderBy(x => x.VariableId, StringComparer.Ordinal)
+                        .Select(x => $"{x.VariableId}\0{x.SensorName}\0{x.ReadingName}\0{x.Unit}"));
+                catalogChanged = !string.Equals(signature, _catalogSignature, StringComparison.Ordinal);
+                _catalogSignature = signature;
                 _readings.Clear();
                 foreach (var reading in discovered)
                     if (double.IsFinite(reading.Value))
                         _readings[reading.VariableId] = reading;
             }
+
+            if (catalogChanged)
+                CatalogChanged?.Invoke();
 
             _logger.Information("[HWiNFO] Sensor count: {Count}", discovered.Length);
             foreach (var reading in discovered)
@@ -281,8 +294,15 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
 
     private void ClearReadings()
     {
+        bool catalogChanged;
         lock (_gate)
+        {
+            catalogChanged = _readings.Count > 0;
             _readings.Clear();
+            _catalogSignature = "";
+        }
+        if (catalogChanged)
+            CatalogChanged?.Invoke();
         Updated?.Invoke();
     }
 

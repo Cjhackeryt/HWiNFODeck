@@ -25,6 +25,12 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
         "hwinfo_cpu_power",
         "hwinfo_cpu_voltage",
         "hwinfo_cpu_fan_rpm",
+        "hwinfo_gpu_usage_percent",
+        "hwinfo_gpu_temperature",
+        "hwinfo_gpu_clock",
+        "hwinfo_gpu_power",
+        "hwinfo_vram_used_mb",
+        "hwinfo_vram_usage_percent",
         "hwinfo_network_download_speed_mbps",
         "hwinfo_network_download_speed_mb_s",
         "hwinfo_network_upload_speed_mbps",
@@ -36,6 +42,7 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
     private readonly HWiNFOSharedMemoryService _service;
     private readonly ILogger _logger;
     private readonly VariableDefinition[] _variables;
+    private IVariableSink? _sink;
 
     public HWiNFOVariableProvider(HWiNFOSharedMemoryService service, ILogger logger)
     {
@@ -46,16 +53,16 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
         foreach (var definition in _variables)
             _logger.Information("[Variables] Registered: {VariableName}", definition.Name);
         _logger.Information("[Variables] HWiNFO variables registered: {Count}", _variables.Length);
-        }
+    }
 
-        public IReadOnlyList<VariableDefinition> Variables => _variables;
-        public IReadOnlyList<VariableDefinition> DeclaredVariables => _variables;
+    public IReadOnlyList<VariableDefinition> Variables => _variables;
+    public IReadOnlyList<VariableDefinition> DeclaredVariables => _variables;
     public bool VariablesDependOnConfiguration => false;
-    public bool SupportsCatalog => false;
+    public bool SupportsCatalog => true;
     public bool SupportsPush => false;
-    public bool SupportsSearch => false;
+    public bool SupportsSearch => true;
     public string CatalogName => "HWiNFO";
-    public int? CatalogEntryCount => _variables.Length;
+    public int? CatalogEntryCount => _variables.Length + _service.Readings.Count;
 
     private VariableDefinition[] RegisterVariables()
     {
@@ -91,8 +98,25 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
         };
     }
 
+    internal static VariableDefinition CreateSensorDefinition(HWiNFOSensor sensor)
+    {
+        var localId = sensor.VariableId.Replace('_', '-');
+        return VariableDefinition.OnDemand(localId, VariableType.Numeric) with
+        {
+            Name = sensor.VariableId,
+            DisplayName = $"{sensor.SensorName}: {sensor.ReadingName}",
+            Description = string.IsNullOrWhiteSpace(sensor.Unit)
+                ? "HWiNFO sensor reading"
+                : $"HWiNFO sensor reading in {sensor.Unit}"
+        };
+    }
+
+    internal IReadOnlyList<VariableDefinition> KnownVariables =>
+        _variables.Concat(_service.Readings.Select(CreateSensorDefinition)).ToArray();
+
     public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var variableName = localId.Replace('-', '_');
         if (variableName.Equals("hwinfo_status", StringComparison.OrdinalIgnoreCase))
             return ValueTask.FromResult(VariableReading.Of(_service.Status));
@@ -130,6 +154,14 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
             "hwinfo_cpu_power" => FindReading("CPU Package Power", "CPU Power"),
             "hwinfo_cpu_voltage" => FindReading("CPU Core Voltage", "Vcore"),
             "hwinfo_cpu_fan_rpm" => FindReading("CPU Fan", "CPU"),
+            "hwinfo_gpu_usage_percent" => SensorAliases.FindGpuUsage(_service.Readings),
+            "hwinfo_gpu_temperature" => SensorAliases.FindGpuTemperature(_service.Readings),
+            "hwinfo_gpu_clock" => SensorAliases.FindGpuClock(_service.Readings),
+            "hwinfo_gpu_power" => SensorAliases.FindGpuPower(_service.Readings),
+            "hwinfo_vram_used_mb" => SensorAliases.FindVramUsedMegabytes(_service.Readings) is { } usedMb
+                ? new HWiNFOSensor(0, "HWiNFO", 0, "VRAM used", "MB", usedMb)
+                : null,
+            "hwinfo_vram_usage_percent" => SensorAliases.FindVramUsagePercent(_service.Readings),
             "hwinfo_drive_used_percent" => FindDriveReading(
                 "used percent",
                 SensorAliases.FindDriveUsedPercent,
@@ -143,6 +175,16 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
 
         if (reading is not null)
             return ValueTask.FromResult(VariableReading.Of(reading.Value));
+
+        if (variableName.StartsWith("sensor_", StringComparison.OrdinalIgnoreCase))
+        {
+            var sensor = _service.Readings.FirstOrDefault(x =>
+                string.Equals(x.VariableId, variableName, StringComparison.OrdinalIgnoreCase));
+            return ValueTask.FromResult(
+                sensor is null
+                    ? VariableReading.Unavailable
+                    : VariableReading.Of(sensor.Value));
+        }
 
         if (variableName.StartsWith("hwinfo_network_", StringComparison.OrdinalIgnoreCase))
         {
@@ -223,18 +265,39 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
 
     public ValueTask<VariableDefinition?> ResolveAsync(
         string localId,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult<VariableDefinition?>(
-            _variables.FirstOrDefault(x => string.Equals(x.Id, localId, StringComparison.OrdinalIgnoreCase)));
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<VariableDefinition?>(
+            KnownVariables.FirstOrDefault(x => string.Equals(x.Id, localId, StringComparison.OrdinalIgnoreCase)));
+    }
 
     public ValueTask<VariableCatalogPage> DiscoverAsync(
         VariableCatalogQuery query,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new VariableCatalogPage
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var definitions = KnownVariables
+            .Where(x => string.IsNullOrWhiteSpace(query.Search) ||
+                x.Id?.Contains(query.Search, StringComparison.OrdinalIgnoreCase) == true ||
+                x.Name?.Contains(query.Search, StringComparison.OrdinalIgnoreCase) == true ||
+                x.DisplayName.Literal?.Contains(query.Search, StringComparison.OrdinalIgnoreCase) == true ||
+                x.Description.Literal?.Contains(query.Search, StringComparison.OrdinalIgnoreCase) == true)
+            .OrderBy(x => x.Id, StringComparer.Ordinal)
+            .ToArray();
+        var remaining = string.IsNullOrEmpty(query.ContinuationToken)
+            ? definitions
+            : definitions.Where(x => string.CompareOrdinal(x.Id, query.ContinuationToken) > 0).ToArray();
+        var pageSize = Math.Max(1, query.PageSize);
+        var items = remaining.Take(pageSize).ToArray();
+        var continuationToken = remaining.Length > pageSize ? items[^1].Id : null;
+
+        return ValueTask.FromResult(new VariableCatalogPage
         {
-            Items = _variables,
-            ContinuationToken = null
+            Items = items,
+            ContinuationToken = continuationToken
         });
+    }
 
     public async ValueTask<IReadOnlyList<VariableValue>> SubscribeAsync(
         IReadOnlyCollection<string> localIds,
@@ -245,8 +308,33 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
         return values;
     }
 
-    public Task OnAttachedAsync(IVariableSink sink, CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+    public Task OnAttachedAsync(IVariableSink sink, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_sink is not null)
+            _service.CatalogChanged -= OnCatalogChanged;
+        _sink = sink;
+        _service.CatalogChanged += OnCatalogChanged;
+        return Task.CompletedTask;
+    }
+
+    private void OnCatalogChanged()
+    {
+        if (_sink is { } sink)
+            _ = InvalidateCatalogAsync(sink);
+    }
+
+    private async Task InvalidateCatalogAsync(IVariableSink sink)
+    {
+        try
+        {
+            await sink.InvalidateCatalogAsync();
+        }
+        catch (Exception exception)
+        {
+            _logger.Error(exception, "[Variables] HWiNFO sensor catalog invalidation failed");
+        }
+    }
 
     public ValueTask<VariableWriteResult> SetValueAsync(
         string localId,

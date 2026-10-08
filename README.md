@@ -7,7 +7,7 @@ the plugin does not bundle HWiNFO or another hardware-monitoring library.
 ## Development
 
 The project uses the current Macro Deck 3 plugin template, Macro Deck SDK
-`3.0.0-beta.14`, and .NET `10.0`. Build and test with:
+`3.0.0-beta.15`, and .NET `10.0`. Build and test with:
 
 ```powershell
 dotnet build .\src\HWiNFODeck\HWiNFODeck.csproj
@@ -43,7 +43,7 @@ values are generated.
 Additional variables:
 
 - `macrodeck_sdk_version` (text): the Macro Deck SDK version the plugin was built
-  against, read from the SDK assembly at runtime (`3.0.0-beta.14` today).
+  against, read from the SDK assembly at runtime (`3.0.0-beta.15` today).
 - `macrodeck_version` (text): the Macro Deck 3 version detected from the host
   process that launched the plugin. Populated when the plugin runs under the
   Macro Deck supervisor; unavailable in a plain development run.
@@ -62,6 +62,18 @@ Additional variables:
 
   Resolved from HWiNFO drive readings when present; otherwise from the first
   ready fixed OS drive, since HWiNFO drive sensors rarely expose usage.
+- GPU and VRAM aliases:
+  - `hwinfo_gpu_usage_percent`
+  - `hwinfo_gpu_temperature`
+  - `hwinfo_gpu_clock`
+  - `hwinfo_gpu_power`
+  - `hwinfo_vram_used_mb`
+  - `hwinfo_vram_usage_percent`
+
+  These resolve when the corresponding graphics sensor is present. The HWiNFO
+  variable catalog also exposes every discovered sensor reading as a stable
+  `sensor_<sensor-id>_<reading-id>` variable, including readings not covered by
+  an alias.
 
 HWiNFO Shared Memory must be enabled in HWiNFO. The service polls one shared-memory
 connection, retains the last valid reading during transient invalid samples, and
@@ -83,9 +95,10 @@ widget.
 
 Add it from the widget picker, then open its configuration:
 
-- **Variable** - a variable picker; bind any numeric variable (a HWiNFO reading,
-  a user variable, another plugin's variable). HWiNFO readings resolve locally
-  in the plugin; everything else resolves through the host.
+- **Variable** - a variable picker for numeric variables. HWiNFO variables
+  resolve locally in the plugin. The current plugin SDK does not expose a
+  general read API for user variables or variables owned by other plugins, so
+  those can appear in the picker but are not currently readable by this gauge.
 - **Maximum** - the value at full deflection. The filled fraction scales linearly
   from 0 to `max` and is clamped, so larger values pin at the stop. Shown under
   the reading.

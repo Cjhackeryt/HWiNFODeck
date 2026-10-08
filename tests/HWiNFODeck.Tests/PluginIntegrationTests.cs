@@ -83,6 +83,16 @@ public sealed class VariableProviderTests
 		"hwinfo-drive-free-space-gb"
 	];
 
+	private static readonly string[] GpuAndVramVariables =
+	[
+		"hwinfo-gpu-usage-percent",
+		"hwinfo-gpu-temperature",
+		"hwinfo-gpu-clock",
+		"hwinfo-gpu-power",
+		"hwinfo-vram-used-mb",
+		"hwinfo-vram-usage-percent"
+	];
+
 	private static HWiNFOVariableProvider CreateProvider() =>
 		new(new HWiNFOSharedMemoryService(new LoggerConfiguration().CreateLogger()),
 			new LoggerConfiguration().CreateLogger());
@@ -101,6 +111,25 @@ public sealed class VariableProviderTests
 		Assert.That(
 			CreateProvider().Variables.Select(v => v.Id),
 			Is.SupersetOf(NetworkAndDriveVariables));
+	}
+
+	[Test]
+	public void The_catalog_declares_gpu_and_vram_variables()
+	{
+		Assert.That(
+			CreateProvider().Variables.Select(v => v.Id),
+			Is.SupersetOf(GpuAndVramVariables));
+	}
+
+	[Test]
+	public void A_sensor_catalog_entry_has_a_stable_local_id_and_readable_name()
+	{
+		var definition = HWiNFOVariableProvider.CreateSensorDefinition(
+			new HWiNFOSensor(12, "NVIDIA GeForce RTX", 44, "GPU Memory Used", "MB", 512));
+
+		Assert.That(definition.Id, Is.EqualTo("sensor-12-44"));
+		Assert.That(definition.Name, Is.EqualTo("sensor_12_44"));
+		Assert.That(definition.DisplayName.Literal, Is.EqualTo("NVIDIA GeForce RTX: GPU Memory Used"));
 	}
 
 	[Test]
@@ -231,6 +260,36 @@ public sealed class SensorAliasesTests
 		];
 
 		Assert.That(SensorAliases.FindDriveFreeGigabytes(readings), Is.EqualTo(1536));
+	}
+
+	[Test]
+	public void Gpu_aliases_match_graphics_readings()
+	{
+		HWiNFOSensor[] readings =
+		[
+			Reading("NVIDIA GeForce RTX 4090", "GPU Core Load", "%", 73),
+			Reading("NVIDIA GeForce RTX 4090", "GPU Temperature", "°C", 68),
+			Reading("NVIDIA GeForce RTX 4090", "GPU Clock", "MHz", 2100),
+			Reading("NVIDIA GeForce RTX 4090", "GPU Power", "W", 320)
+		];
+
+		Assert.That(SensorAliases.FindGpuUsage(readings)?.Value, Is.EqualTo(73));
+		Assert.That(SensorAliases.FindGpuTemperature(readings)?.Value, Is.EqualTo(68));
+		Assert.That(SensorAliases.FindGpuClock(readings)?.Value, Is.EqualTo(2100));
+		Assert.That(SensorAliases.FindGpuPower(readings)?.Value, Is.EqualTo(320));
+	}
+
+	[Test]
+	public void Vram_aliases_find_memory_usage_and_convert_units()
+	{
+		HWiNFOSensor[] readings =
+		[
+			Reading("NVIDIA GeForce RTX 4090", "GPU Memory Usage", "%", 42),
+			Reading("NVIDIA GeForce RTX 4090", "Dedicated GPU Memory Used", "GB", 4)
+		];
+
+		Assert.That(SensorAliases.FindVramUsagePercent(readings)?.Value, Is.EqualTo(42));
+		Assert.That(SensorAliases.FindVramUsedMegabytes(readings), Is.EqualTo(4096));
 	}
 
 	[Test]
