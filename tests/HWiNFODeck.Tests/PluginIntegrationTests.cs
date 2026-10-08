@@ -83,6 +83,20 @@ public sealed class VariableProviderTests
 		"hwinfo-drive-free-space-gb"
 	];
 
+	private static readonly string[] GpuVariables =
+	[
+		"hwinfo-gpu-name",
+		"hwinfo-gpu-usage",
+		"hwinfo-gpu-temperature",
+		"hwinfo-gpu-hotspot-temperature",
+		"hwinfo-gpu-memory-junction-temperature",
+		"hwinfo-gpu-memory-usage",
+		"hwinfo-gpu-clock",
+		"hwinfo-gpu-effective-clock",
+		"hwinfo-gpu-power",
+		"hwinfo-gpu-fan-rpm"
+	];
+
 	private static HWiNFOVariableProvider CreateProvider() =>
 		new(new HWiNFOSharedMemoryService(new LoggerConfiguration().CreateLogger()),
 			new LoggerConfiguration().CreateLogger());
@@ -101,6 +115,14 @@ public sealed class VariableProviderTests
 		Assert.That(
 			CreateProvider().Variables.Select(v => v.Id),
 			Is.SupersetOf(NetworkAndDriveVariables));
+	}
+
+	[Test]
+	public void The_catalog_declares_the_gpu_variables()
+	{
+		Assert.That(
+			CreateProvider().Variables.Select(v => v.Id),
+			Is.SupersetOf(GpuVariables));
 	}
 
 	[Test]
@@ -243,6 +265,71 @@ public sealed class SensorAliasesTests
 
 		Assert.That(SensorAliases.FindDriveUsedPercent(readings), Is.Null);
 		Assert.That(SensorAliases.FindDriveFreeGigabytes(readings), Is.Null);
+	}
+
+	private static readonly HWiNFOSensor[] NvidiaGpuReadings =
+	[
+		Reading("CPU [#0]: AMD Ryzen 7 5800X3D", "CPU (Tctl/Tdie)", "°C", 52),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Temperature", "°C", 34.7),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Memory Junction Temperature", "°C", 42),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Hot Spot Temperature", "°C", 43.9),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Fan1", "%", 30),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Fan1", "RPM", 1100),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Power", "W", 21.4),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Clock", "MHz", 2610),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Core Load", "%", 26),
+		Reading("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER", "GPU Memory Usage", "%", 23.1)
+	];
+
+	[Test]
+	public void Gpu_temperatures_match_their_exact_label()
+	{
+		Assert.That(
+			SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuTemperatureLabels)?.Value,
+			Is.EqualTo(34.7));
+		Assert.That(
+			SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuHotSpotTemperatureLabels)?.Value,
+			Is.EqualTo(43.9));
+		Assert.That(
+			SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuMemoryJunctionTemperatureLabels)?.Value,
+			Is.EqualTo(42));
+	}
+
+	[Test]
+	public void Gpu_load_clock_and_power_resolve()
+	{
+		Assert.That(SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuUsageLabels)?.Value, Is.EqualTo(26));
+		Assert.That(SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuMemoryUsageLabels)?.Value, Is.EqualTo(23.1));
+		Assert.That(SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuClockLabels)?.Value, Is.EqualTo(2610));
+		Assert.That(SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuPowerLabels)?.Value, Is.EqualTo(21.4));
+	}
+
+	[Test]
+	public void Gpu_fan_rpm_skips_the_duty_cycle_reading_with_the_same_label()
+	{
+		var fan = SensorAliases.FindGpuReading(NvidiaGpuReadings, SensorAliases.GpuFanLabels, SensorAliases.IsRpmUnit);
+
+		Assert.That(fan?.Value, Is.EqualTo(1100));
+	}
+
+	[Test]
+	public void Gpu_lookups_ignore_cpu_sensors()
+	{
+		HWiNFOSensor[] readings =
+		[
+			Reading("CPU [#0]: Intel Core i7-12700K", "GPU Clock", "MHz", 1450)
+		];
+
+		Assert.That(SensorAliases.FindGpuReading(readings, SensorAliases.GpuClockLabels), Is.Null);
+		Assert.That(SensorAliases.FindGpuName(readings), Is.Null);
+	}
+
+	[Test]
+	public void The_gpu_name_is_the_first_gpu_sensor()
+	{
+		Assert.That(
+			SensorAliases.FindGpuName(NvidiaGpuReadings),
+			Is.EqualTo("GPU [#0]: NVIDIA GeForce RTX 4070 Ti SUPER"));
 	}
 
 	[Test]
