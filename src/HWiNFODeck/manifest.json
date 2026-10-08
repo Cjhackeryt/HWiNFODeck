@@ -21,6 +21,6 @@
   },
   "license": "MIT",
   "compatibility": {
-    "macroDeck": ">=3.0.0-beta.14"
+    "macroDeck": ">=3.0.0-beta.15"
   }
 }
