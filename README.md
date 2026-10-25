@@ -1,5 +1,12 @@
 # HWiNFODeck
 
+<a href="https://macro-deck.app/store/com.cjhackeryt.hwinfodeck">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://assets.macro-deck.app/branding/Open%20in%20the%20Macro%20Deck%20Store%20Badge%20Dark.png">
+    <img alt="Open in the Macro Deck Store" src="https://assets.macro-deck.app/branding/Open%20in%20the%20Macro%20Deck%20Store%20Badge%20Light.png" height="56">
+  </picture>
+</a>
+
 HWiNFODeck is an unsigned Macro Deck 3 development plugin that exposes HWiNFO sensor
 readings through the HWiNFO Shared Memory Interface. HWiNFO is installed separately;
 the plugin does not bundle HWiNFO or another hardware-monitoring library.
@@ -7,7 +14,7 @@ the plugin does not bundle HWiNFO or another hardware-monitoring library.
 ## Development
 
 The project uses the current Macro Deck 3 plugin template, Macro Deck SDK
-`3.0.0-beta.15`, and .NET `10.0`. Build and test with:
+`3.0.0-beta.19`, and .NET `10.0`. Build and test with:
 
 ```powershell
 dotnet build .\src\HWiNFODeck\HWiNFODeck.csproj
@@ -20,9 +27,9 @@ Create the unsigned development package with the installed Macro Deck tooling:
 macrodeck-plugin build --source .\src\HWiNFODeck --output .\artifacts
 ```
 
-The first package is version `0.1.0`. Each release must increment the version in
-`src/HWiNFODeck/manifest.json`, which is the plugin's single source of truth for
-the version.
+The current package version is `1.0.4`. Each release must increment the version
+in `src/HWiNFODeck/manifest.json`, which is the plugin's single source of truth
+for the version.
 
 ## Publishing a release
 
@@ -35,15 +42,18 @@ it can be reviewed and released to users.
 
 The provider always exposes connection status, HWiNFO version, discovered reading
 count, and the initial CPU variables. It also exposes the requested GPU and
-motherboard aliases. Every discovered reading is available from the HWiNFO sensor
-catalog using a stable `sensor_<sensor-id>_<reading-id>` variable id. Optional
-aliases resolve only when a matching HWiNFO reading exists; no zero or synthetic
-values are generated.
+motherboard aliases. Every discovered reading, including readings from all GPU
+adapters, is available from the HWiNFO sensor catalog using a stable
+`sensor_<sensor-id>_<reading-id>` variable id. The `hwinfo_gpu_*` convenience
+aliases continue to resolve against the first GPU sensor HWiNFO reports. For
+additional GPUs, select their readings individually from the sensor catalog.
+Optional aliases resolve only when a matching HWiNFO reading exists; no zero or
+synthetic values are generated.
 
 Additional variables:
 
 - `macrodeck_sdk_version` (text): the Macro Deck SDK version the plugin was built
-  against, read from the SDK assembly at runtime (`3.0.0-beta.15` today).
+  against, read from the SDK assembly at runtime (`3.0.0-beta.19` today).
 - `macrodeck_version` (text): the Macro Deck 3 version detected from the host
   process that launched the plugin. Populated when the plugin runs under the
   Macro Deck supervisor; unavailable in a plain development run.
@@ -62,7 +72,7 @@ Additional variables:
 
   Resolved from HWiNFO drive readings when present; otherwise from the first
   ready fixed OS drive, since HWiNFO drive sensors rarely expose usage.
-- GPU readings, from the first `GPU [#n]` sensor HWiNFO reports:
+- GPU convenience aliases, from the first GPU sensor HWiNFO reports:
   - `hwinfo_gpu_name` (text)
   - `hwinfo_gpu_usage` (numeric, %) - `GPU Core Load`, `GPU Utilization` or `GPU D3D Usage`
   - `hwinfo_gpu_temperature`, `hwinfo_gpu_hotspot_temperature`,

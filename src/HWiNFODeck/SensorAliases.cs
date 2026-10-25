@@ -38,10 +38,8 @@ internal static class SensorAliases
         "Drive Free Space", "Free Space", "Available Space", "Free", "Available"
     ];
 
-    // HWiNFO names every graphics sensor "GPU [#n]: <model>". GPU labels are matched exactly rather than
-    // word by word: "GPU Temperature" is also contained in "GPU Memory Junction Temperature".
-    private const string GpuSensorPrefix = "GPU";
-
+    // GPU labels are matched exactly rather than word by word: "GPU Temperature" is also contained in
+    // "GPU Memory Junction Temperature".
     public static readonly string[] GpuUsageLabels = ["GPU Core Load", "GPU Utilization", "GPU D3D Usage"];
     public static readonly string[] GpuTemperatureLabels = ["GPU Temperature"];
     public static readonly string[] GpuHotSpotTemperatureLabels = ["GPU Hot Spot Temperature"];
@@ -119,7 +117,13 @@ internal static class SensorAliases
         string[] labels,
         Func<string, bool>? unitOk = null)
     {
-        var gpuReadings = readings.Where(x => IsGpuSensor(x.SensorName)).ToArray();
+        var firstGpu = readings.FirstOrDefault(x => IsGpuSensor(x.SensorName));
+        if (firstGpu is null)
+            return null;
+
+        var gpuReadings = readings
+            .Where(x => x.SensorId == firstGpu.SensorId && IsGpuSensor(x.SensorName))
+            .ToArray();
         foreach (var label in labels)
         {
             var match = gpuReadings.FirstOrDefault(x =>
@@ -135,14 +139,17 @@ internal static class SensorAliases
     public static string? FindGpuName(IReadOnlyList<HWiNFOSensor> readings) =>
         readings.FirstOrDefault(x => IsGpuSensor(x.SensorName))?.SensorName;
 
+    public static bool IsGpuSensor(string sensorName) =>
+        sensorName.StartsWith("GPU", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.StartsWith("[GPU ", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.StartsWith("[dGPU ", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.StartsWith("[iGPU ", StringComparison.OrdinalIgnoreCase);
+
     public static bool IsTemperatureUnit(string unit) => unit.Contains('C', StringComparison.OrdinalIgnoreCase);
 
     public static bool IsPercentUnit(string unit) => unit.Trim() == "%";
 
     public static bool IsRpmUnit(string unit) => unit.Trim().Equals("RPM", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsGpuSensor(string sensorName) =>
-        sensorName.StartsWith(GpuSensorPrefix, StringComparison.OrdinalIgnoreCase);
 
     private static HWiNFOSensor? FindNetworkReading(
         IReadOnlyList<HWiNFOSensor> readings,

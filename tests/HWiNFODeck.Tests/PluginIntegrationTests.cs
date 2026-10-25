@@ -1,5 +1,6 @@
 using MacroDeck.Plugin.Testing;
 using MacroDeck.Sdk.ConfigFlow;
+using MacroDeck.Sdk.Variables;
 using NUnit.Framework;
 using Serilog;
 
@@ -101,6 +102,15 @@ public sealed class VariableProviderTests
 		new(new HWiNFOSharedMemoryService(new LoggerConfiguration().CreateLogger()),
 			new LoggerConfiguration().CreateLogger());
 
+	private static HWiNFOSensor Reading(
+		string sensor,
+		string name,
+		string unit,
+		double value,
+		uint sensorId,
+		uint readingId) =>
+		new(sensorId, sensor, readingId, name, unit, value);
+
 	[Test]
 	public void The_catalog_declares_the_plugin_version_variables()
 	{
@@ -123,6 +133,94 @@ public sealed class VariableProviderTests
 		Assert.That(
 			CreateProvider().Variables.Select(v => v.Id),
 			Is.SupersetOf(GpuVariables));
+	}
+
+	[Test]
+	public async Task The_sensor_catalog_exposes_readings_from_each_gpu()
+	{
+		var logger = new LoggerConfiguration().CreateLogger();
+		var service = new HWiNFOSharedMemoryService(logger);
+		service.ReplaceReadings(
+		[
+			Reading("[dGPU #0]: AMD Radeon RX 6600", "GPU Temperature", "°C", 55, 10, 1),
+			Reading("[GPU #1]: NVIDIA GeForce RTX 5070 Ti", "GPU Temperature", "°C", 42, 11, 1)
+		]);
+		var provider = new HWiNFOVariableProvider(service, logger);
+
+		var catalog = await provider.DiscoverAsync(
+			new VariableCatalogQuery { PageSize = 10 },
+			CancellationToken.None);
+		var firstGpu = await provider.ReadAsync("sensor_10_1", CancellationToken.None);
+		var secondGpu = await provider.ReadAsync("sensor_11_1", CancellationToken.None);
+
+		Assert.That(catalog.Items.Select(item => item.Id), Is.EquivalentTo(["sensor_10_1", "sensor_11_1"]));
+		Assert.That(catalog.Items.Select(item => item.DisplayName.ToString()), Is.EquivalentTo(
+			[
+				"[dGPU #0]: AMD Radeon RX 6600 / GPU Temperature",
+				"[GPU #1]: NVIDIA GeForce RTX 5070 Ti / GPU Temperature"
+			]));
+		Assert.That(firstGpu.Value, Is.EqualTo(55));
+		Assert.That(secondGpu.Value, Is.EqualTo(42));
+	}
+
+	[Test]
+	public async Task The_sensor_catalog_paginates_and_searches_sensor_readings()
+	{
+		var logger = new LoggerConfiguration().CreateLogger();
+		var service = new HWiNFOSharedMemoryService(logger);
+		service.ReplaceReadings(
+		[
+			Reading("[dGPU #0]: AMD Radeon RX 6600", "GPU Temperature", "°C", 55, 10, 1),
+			Reading("[GPU #1]: NVIDIA GeForce RTX 5070 Ti", "GPU Temperature", "°C", 42, 11, 1)
+		]);
+		var provider = new HWiNFOVariableProvider(service, logger);
+
+		var firstPage = await provider.DiscoverAsync(
+			new VariableCatalogQuery { PageSize = 1 },
+			CancellationToken.None);
+		var secondPage = await provider.DiscoverAsync(
+			new VariableCatalogQuery { PageSize = 1, ContinuationToken = firstPage.ContinuationToken },
+			CancellationToken.None);
+		var searchPage = await provider.DiscoverAsync(
+			new VariableCatalogQuery { PageSize = 10, Search = "Radeon" },
+			CancellationToken.None);
+
+		Assert.That(firstPage.Items.Single().Id, Is.EqualTo("sensor_10_1"));
+		Assert.That(firstPage.ContinuationToken, Is.EqualTo("1"));
+		Assert.That(secondPage.Items.Single().Id, Is.EqualTo("sensor_11_1"));
+		Assert.That(secondPage.ContinuationToken, Is.Null);
+		Assert.That(searchPage.Items.Select(item => item.Id), Is.EqualTo(["sensor_10_1"]));
+	}
+
+	[Test]
+	public void The_sensor_catalog_changes_only_when_reading_identity_or_metadata_changes()
+	{
+		var service = new HWiNFOSharedMemoryService(new LoggerConfiguration().CreateLogger());
+		var notifications = 0;
+		service.CatalogChanged += () => notifications++;
+		var reading = Reading("[dGPU #0]: AMD Radeon RX 6600", "GPU Temperature", "°C", 55, 10, 1);
+
+		Assert.That(service.ReplaceReadings([reading]), Is.True);
+		Assert.That(service.ReplaceReadings([reading with { Value = 56 }]), Is.False);
+		Assert.That(
+			service.ReplaceReadings([reading, Reading("[GPU #1]: NVIDIA GeForce RTX 5070 Ti", "GPU Temperature", "°C", 42, 11, 1)]),
+			Is.True);
+		Assert.That(service.ReplaceReadings([]), Is.True);
+		Assert.That(notifications, Is.EqualTo(3));
+	}
+
+	[Test]
+	public async Task Sensor_catalog_ids_resolve_when_a_reading_is_temporarily_missing()
+	{
+		var logger = new LoggerConfiguration().CreateLogger();
+		var service = new HWiNFOSharedMemoryService(logger);
+		var provider = new HWiNFOVariableProvider(service, logger);
+
+		var definition = await provider.ResolveAsync("sensor_10_1", CancellationToken.None);
+		var value = await provider.ReadAsync("sensor_10_1", CancellationToken.None);
+
+		Assert.That(definition, Is.Not.Null);
+		Assert.That(value.Value, Is.Null);
 	}
 
 	[Test]
@@ -175,8 +273,14 @@ public sealed class NetworkSpeedConverterTests
 [TestFixture]
 public sealed class SensorAliasesTests
 {
-	private static HWiNFOSensor Reading(string sensor, string name, string unit, double value) =>
-		new(1, sensor, 1, name, unit, value);
+	private static HWiNFOSensor Reading(
+		string sensor,
+		string name,
+		string unit,
+		double value,
+		uint sensorId = 1,
+		uint readingId = 1) =>
+		new(sensorId, sensor, readingId, name, unit, value);
 
 	[Test]
 	public void Dl_and_ul_rate_labels_resolve_to_the_matching_direction()
@@ -322,6 +426,43 @@ public sealed class SensorAliasesTests
 
 		Assert.That(SensorAliases.FindGpuReading(readings, SensorAliases.GpuClockLabels), Is.Null);
 		Assert.That(SensorAliases.FindGpuName(readings), Is.Null);
+	}
+
+	[Test]
+	public void Gpu_sensor_names_match_the_dgpu_and_bracketed_gpu_forms()
+	{
+		Assert.That(SensorAliases.IsGpuSensor("[dGPU #0]: AMD Radeon RX 6600"), Is.True);
+		Assert.That(SensorAliases.IsGpuSensor("[GPU #1]: NVIDIA GeForce RTX 5070 Ti"), Is.True);
+		Assert.That(SensorAliases.IsGpuSensor("GPU [#0]: NVIDIA GeForce RTX 4070 Ti"), Is.True);
+		Assert.That(SensorAliases.IsGpuSensor("CPU [#0]: AMD Ryzen 7 5800X3D"), Is.False);
+		Assert.That(SensorAliases.IsGpuSensor("Motherboard GPU controller"), Is.False);
+	}
+
+	[Test]
+	public void Gpu_aliases_continue_to_use_the_first_reported_gpu()
+	{
+		HWiNFOSensor[] readings =
+		[
+			Reading("[dGPU #0]: AMD Radeon RX 6600", "GPU Temperature", "°C", 55, 10, 1),
+			Reading("[GPU #1]: NVIDIA GeForce RTX 5070 Ti", "GPU Temperature", "°C", 42, 11, 1)
+		];
+
+		Assert.That(SensorAliases.FindGpuName(readings), Is.EqualTo("[dGPU #0]: AMD Radeon RX 6600"));
+		Assert.That(
+			SensorAliases.FindGpuReading(readings, SensorAliases.GpuTemperatureLabels)?.Value,
+			Is.EqualTo(55));
+	}
+
+	[Test]
+	public void Gpu_aliases_do_not_fall_back_to_a_different_gpu()
+	{
+		HWiNFOSensor[] readings =
+		[
+			Reading("[dGPU #0]: AMD Radeon RX 6600", "GPU Temperature", "°C", 55, 10, 1),
+			Reading("[GPU #1]: NVIDIA GeForce RTX 5070 Ti", "GPU Power", "W", 120, 11, 1)
+		];
+
+		Assert.That(SensorAliases.FindGpuReading(readings, SensorAliases.GpuPowerLabels), Is.Null);
 	}
 
 	[Test]

@@ -1,3 +1,5 @@
+using System.Globalization;
+using MacroDeck.Plugin.Protocol.Limits;
 using MacroDeck.Sdk.Variables;
 using Serilog;
 
@@ -61,11 +63,11 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
         public IReadOnlyList<VariableDefinition> Variables => _variables;
         public IReadOnlyList<VariableDefinition> DeclaredVariables => _variables;
     public bool VariablesDependOnConfiguration => false;
-    public bool SupportsCatalog => false;
+    public bool SupportsCatalog => true;
     public bool SupportsPush => false;
-    public bool SupportsSearch => false;
+    public bool SupportsSearch => true;
     public string CatalogName => "HWiNFO";
-    public int? CatalogEntryCount => _variables.Length;
+    public int? CatalogEntryCount => _service.ReadingCount;
 
     private VariableDefinition[] RegisterVariables()
     {
@@ -103,6 +105,17 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
 
     public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (TryParseSensorVariableId(localId))
+        {
+            var sensorReading = _service.FindByVariableId(localId);
+            return ValueTask.FromResult(
+                sensorReading is null
+                    ? VariableReading.Unavailable
+                    : VariableReading.Of(sensorReading.Value));
+        }
+
         var variableName = localId.Replace('-', '_');
         if (variableName.Equals("hwinfo_status", StringComparison.OrdinalIgnoreCase))
             return ValueTask.FromResult(VariableReading.Of(_service.Status));
@@ -269,18 +282,101 @@ public sealed class HWiNFOVariableProvider : IVariableProvider
 
     public ValueTask<VariableDefinition?> ResolveAsync(
         string localId,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult<VariableDefinition?>(
-            _variables.FirstOrDefault(x => string.Equals(x.Id, localId, StringComparison.OrdinalIgnoreCase)));
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var declared = _variables.FirstOrDefault(x =>
+            string.Equals(x.Id, localId, StringComparison.OrdinalIgnoreCase));
+        if (declared is not null)
+            return ValueTask.FromResult<VariableDefinition?>(declared);
+
+        return ValueTask.FromResult<VariableDefinition?>(
+            TryParseSensorVariableId(localId)
+                ? CreateSensorDefinition(localId, localId, "", "")
+                : null);
+    }
 
     public ValueTask<VariableCatalogPage> DiscoverAsync(
         VariableCatalogQuery query,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new VariableCatalogPage
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(query.PageSize);
+
+        var readings = _service.Readings
+            .Where(reading =>
+                string.IsNullOrWhiteSpace(query.Search) ||
+                $"{reading.SensorName} {reading.ReadingName}".Contains(
+                    query.Search,
+                    StringComparison.OrdinalIgnoreCase))
+            .OrderBy(reading => reading.SensorId)
+            .ThenBy(reading => reading.ReadingId)
+            .ToArray();
+
+        var offset = 0;
+        if (!string.IsNullOrEmpty(query.ContinuationToken) &&
+            (!int.TryParse(
+                query.ContinuationToken,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out offset) ||
+             offset < 0))
         {
-            Items = _variables,
-            ContinuationToken = null
+            throw new ArgumentException("The sensor catalog continuation token is invalid.", nameof(query));
+        }
+
+        var items = readings
+            .Skip(offset)
+            .Take(Math.Min(query.PageSize, ProtocolLimits.MaxVariableCatalogPageSize))
+            .Select(reading => CreateSensorDefinition(
+                reading.VariableId,
+                reading.VariableId,
+                reading.SensorName,
+                reading.ReadingName,
+                reading.Unit))
+            .ToArray();
+        var nextOffset = offset + items.Length;
+
+        return ValueTask.FromResult(new VariableCatalogPage
+        {
+            Items = items,
+            ContinuationToken = nextOffset < readings.Length
+                ? nextOffset.ToString(CultureInfo.InvariantCulture)
+                : null
         });
+    }
+
+    private static VariableDefinition CreateSensorDefinition(
+        string id,
+        string name,
+        string sensorName,
+        string readingName,
+        string unit = "") =>
+        VariableDefinition.OnDemand(name, VariableType.Numeric) with
+        {
+            Id = id,
+            DisplayName = string.IsNullOrEmpty(sensorName)
+                ? id
+                : $"{sensorName} / {readingName}",
+            Unit = unit
+        };
+
+    private static bool TryParseSensorVariableId(string localId)
+    {
+        if (!localId.StartsWith("sensor_", StringComparison.Ordinal))
+            return false;
+
+        var idParts = localId.AsSpan("sensor_".Length);
+        var separator = idParts.IndexOf('_');
+        return separator > 0 &&
+            idParts[(separator + 1)..].IndexOf('_') < 0 &&
+            uint.TryParse(idParts[..separator], NumberStyles.None, CultureInfo.InvariantCulture, out var sensorId) &&
+            uint.TryParse(idParts[(separator + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out var readingId) &&
+            sensorId != 0 &&
+            readingId != 0;
+    }
 
     public async ValueTask<IReadOnlyList<VariableValue>> SubscribeAsync(
         IReadOnlyCollection<string> localIds,
