@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.MemoryMappedFiles;
 using System.Text;
+using MacroDeck.Sdk.Logging;
 using Serilog;
 
 namespace HWiNFODeck;
@@ -23,6 +24,9 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
     private MemoryMappedFile? _map;
     private CancellationTokenSource? _polling;
     private Task? _pollTask;
+    private readonly FailureEpisodeTracker _readFailures = new();
+    private string? _lastInvalidTable;
+    private bool _hasLoggedMapOpen;
 
     public HWiNFOSharedMemoryService(ILogger logger) => _logger = logger.ForContext<HWiNFOSharedMemoryService>();
     public string Status { get; private set; } = "HWiNFO not running";
@@ -36,7 +40,9 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
             return _readings.Values.FirstOrDefault(x =>
                 words.All(word => $"{x.SensorName} {x.ReadingName}".Contains(word, StringComparison.OrdinalIgnoreCase)));
     }
+    public int ReadingCount { get { lock (_gate) return _readings.Count; } }
     public event Action? Updated;
+    public event Action? CatalogChanged;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -53,7 +59,7 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
             try { ReadSharedMemory(); }
             catch (Exception exception)
             {
-                _logger.Error(exception, "[HWiNFO] Shared Memory read failed");
+                LogReadFailure(exception);
                 ClearReadings();
                 SetStatus("Connection error");
             }
@@ -64,18 +70,15 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
 
     private void ReadSharedMemory()
     {
-        var process = FindHWiNFOProcess();
-        _logger.Information("[HWiNFO] Process detected: {Detected}", process is not null ? "YES" : "NO");
-        _logger.Information("[HWiNFO] Process name: {ProcessName}", process?.ProcessName ?? "none");
-        _logger.Information("[HWiNFO] Searching for Shared Memory...");
+        using var process = FindHWiNFOProcess();
 
         if (process is null)
         {
             CloseMap();
             ClearReadings();
             SetStatus("HWiNFO not running");
-            _logger.Information("[HWiNFO] Shared Memory mapping found: NO");
-            _logger.Information("[HWiNFO] Shared Memory opened: NO");
+            _hasLoggedMapOpen = false;
+            RecordReadSuccess();
             return;
         }
 
@@ -83,38 +86,35 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
         {
             if (!OperatingSystem.IsWindows())
             {
-                _logger.Information("[HWiNFO] Shared Memory is Windows-only");
                 ClearReadings();
                 SetStatus("Windows required");
+                RecordReadSuccess();
                 return;
             }
 
             try
             {
                 _map = MemoryMappedFile.OpenExisting(MapName, MemoryMappedFileRights.Read);
-                _logger.Information("[HWiNFO] Shared Memory mapping found: YES");
-                _logger.Information("[HWiNFO] Shared Memory opened: YES");
+                if (!_hasLoggedMapOpen)
+                {
+                    _logger.Information("[HWiNFO] Shared Memory mapping opened");
+                    _hasLoggedMapOpen = true;
+                }
             }
             catch (FileNotFoundException)
             {
-                _logger.Information("[HWiNFO] Shared Memory mapping found: NO");
-                _logger.Information("[HWiNFO] Shared Memory opened: NO");
                 ClearReadings();
                 SetStatus("HWiNFO running - Shared Memory unavailable");
+                RecordReadSuccess();
                 return;
             }
             catch (Exception exception)
             {
-                _logger.Error(exception, "[HWiNFO] Shared Memory opened: NO");
+                LogReadFailure(exception);
                 ClearReadings();
                 SetStatus("Connection error");
                 return;
             }
-        }
-        else
-        {
-            _logger.Information("[HWiNFO] Shared Memory mapping found: YES");
-            _logger.Information("[HWiNFO] Shared Memory opened: YES");
         }
 
         try
@@ -123,60 +123,46 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
             var length = accessor.Capacity;
             if (length < HeaderSize)
             {
-                _logger.Warning("[HWiNFO] Header valid: NO (mapping is {Length} bytes)", length);
                 ClearReadings();
                 SetStatus("HWiNFO running - Shared Memory unavailable");
+                RecordReadSuccess();
                 return;
             }
 
             var header = ReadHeader(accessor);
             var headerValid = ValidateHeader(header, length);
-            _logger.Information("[HWiNFO] Header valid: {Valid}", headerValid ? "YES" : "NO");
-            _logger.Information(
-                "[HWiNFO] Version: {Version}; Revision: {Revision}; Mapping size: {Length}; Sensor offset/size/count: {SensorOffset}/{SensorSize}/{SensorCount}; Reading offset/size/count: {ReadingOffset}/{ReadingSize}/{ReadingCount}",
-                header.Version,
-                header.Revision,
-                length,
-                header.SensorOffset,
-                header.SensorSize,
-                header.SensorCount,
-                header.ReadingOffset,
-                header.ReadingSize,
-                header.ReadingCount);
             Version = $"SM2 layout {header.Version}";
 
             if (!headerValid)
             {
                 ClearReadings();
                 SetStatus("HWiNFO running - Shared Memory unavailable");
+                RecordReadSuccess();
                 return;
             }
 
-            var discovered = ParseEntries(accessor, length, header).ToArray();
-            lock (_gate)
+            var discovered = ParseEntries(accessor, length, header)
+                .Where(reading => double.IsFinite(reading.Value))
+                .ToArray();
+            if (ReplaceReadings(discovered))
             {
-                _readings.Clear();
-                foreach (var reading in discovered)
-                    if (double.IsFinite(reading.Value))
-                        _readings[reading.VariableId] = reading;
-            }
-
-            _logger.Information("[HWiNFO] Sensor count: {Count}", discovered.Length);
-            foreach (var reading in discovered)
-            {
+                var gpuCount = discovered
+                    .Where(reading => SensorAliases.IsGpuSensor(reading.SensorName))
+                    .Select(reading => reading.SensorId)
+                    .Distinct()
+                    .Count();
                 _logger.Information(
-                    "[HWiNFO] Sensor: {Sensor}; Reading: {Reading}; Unit: {Unit}; Value: {Value}",
-                    reading.SensorName,
-                    reading.ReadingName,
-                    reading.Unit,
-                    reading.Value);
+                    "[HWiNFO] Sensor catalog updated: {ReadingCount} readings across {GpuCount} GPU sensors",
+                    discovered.Length,
+                    gpuCount);
             }
 
+            RecordReadSuccess(connected: true);
             SetStatus("Connected");
         }
         catch (Exception exception)
         {
-            _logger.Error(exception, "[HWiNFO] Shared Memory read failed");
+            LogReadFailure(exception);
             CloseMap();
             ClearReadings();
             SetStatus("Connection error");
@@ -203,12 +189,16 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
 
     private bool ValidateHeader(SharedMemoryHeader header, long length)
     {
-        return header.Signature == Signature
+        var valid = header.Signature == Signature
             && header.Version is >= 1 and <= 2
             && header.SensorSize >= 264
             && header.ReadingSize >= 316
             && ValidTable(header.SensorOffset, header.SensorSize, header.SensorCount, length)
             && ValidTable(header.ReadingOffset, header.ReadingSize, header.ReadingCount, length);
+        if (valid)
+            _lastInvalidTable = null;
+
+        return valid;
     }
 
     private static IEnumerable<HWiNFOSensor> ParseEntries(
@@ -248,8 +238,9 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
     {
         var valid = size >= 8 && count < 100000 &&
             (ulong)offset + (ulong)size * count <= (ulong)length;
-        if (!valid)
+        if (!valid && _lastInvalidTable is null)
         {
+            _lastInvalidTable = $"{offset}:{size}:{count}:{length}";
             _logger.Warning(
                 "[HWiNFO] Invalid table: offset={Offset}, size={Size}, count={Count}, end={End}, mapping={Length}",
                 offset,
@@ -276,14 +267,77 @@ public sealed class HWiNFOSharedMemoryService : IAsyncDisposable
     {
         if (Status == status) return;
         Status = status;
+        _logger.Information("[HWiNFO] Status: {Status}", status);
         Updated?.Invoke();
     }
 
     private void ClearReadings()
     {
+        bool changed;
         lock (_gate)
+        {
+            changed = _readings.Count > 0;
             _readings.Clear();
-        Updated?.Invoke();
+        }
+
+        if (changed)
+        {
+            CatalogChanged?.Invoke();
+            Updated?.Invoke();
+        }
+    }
+
+    internal bool ReplaceReadings(HWiNFOSensor[] readings)
+    {
+        bool catalogChanged;
+        lock (_gate)
+        {
+            catalogChanged = _readings.Count != readings.Length ||
+                readings.Any(reading =>
+                    !_readings.TryGetValue(reading.VariableId, out var current) ||
+                    current.SensorName != reading.SensorName ||
+                    current.ReadingName != reading.ReadingName ||
+                    current.Unit != reading.Unit);
+
+            _readings.Clear();
+            foreach (var reading in readings)
+                _readings[reading.VariableId] = reading;
+        }
+
+        if (catalogChanged)
+            CatalogChanged?.Invoke();
+
+        return catalogChanged;
+    }
+
+    internal HWiNFOSensor? FindByVariableId(string variableId)
+    {
+        lock (_gate)
+            return _readings.TryGetValue(variableId, out var reading) ? reading : null;
+    }
+
+    private void LogReadFailure(Exception exception)
+    {
+        var signal = _readFailures.RecordFailure(exception.Message);
+        if (signal.Kind == FailureEpisodeSignalKind.Onset)
+            _logger.Error(exception, "[HWiNFO] Shared Memory read failed");
+        else if (signal.Kind == FailureEpisodeSignalKind.SummaryDue)
+            _logger.Warning(
+                "[HWiNFO] Shared Memory read still failing after {FailureCount} attempts: {LastError}",
+                signal.ConsecutiveFailures,
+                signal.LastError);
+    }
+
+    private void RecordReadSuccess(bool connected = false)
+    {
+        var episode = _readFailures.RecordSuccess();
+        if (connected && episode is not null)
+        {
+            _logger.Information(
+                "[HWiNFO] Shared Memory reads recovered after {FailureCount} failures over {Duration}",
+                episode.Failures,
+                episode.Duration);
+        }
     }
 
     private void CloseMap()

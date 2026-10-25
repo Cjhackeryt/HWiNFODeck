@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MacroDeck.Plugin.Hosting.Integrations.HostApis;
 using MacroDeck.Sdk.Ui;
 using MacroDeck.Sdk.Variables;
 using MacroDeck.Sdk.Widgets;
@@ -238,7 +239,15 @@ public sealed class GaugeRegistrationTests
 
 	private static readonly string[] DeclaredWidgetTypes = ["gauge"];
 
-	private static PluginIntegration CreateIntegration() => new(WidgetTestSupport.Logger());
+	private static PluginIntegration CreateIntegration() =>
+		new(WidgetTestSupport.Logger(), new NoOpCatalogNotifier());
+
+	private sealed class NoOpCatalogNotifier : IPluginCatalogNotifier
+	{
+		public void CatalogChanged(string kind, string? reason, string? detail)
+		{
+		}
+	}
 
 	[Test]
 	public void The_integration_offers_the_gauge_widget_type()

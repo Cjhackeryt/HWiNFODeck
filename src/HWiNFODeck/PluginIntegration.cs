@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
+using MacroDeck.Plugin.Hosting.Integrations.HostApis;
+using MacroDeck.Plugin.Protocol.Handshake;
 using MacroDeck.Sdk;
 using MacroDeck.Sdk.Actions;
 using MacroDeck.Sdk.ConfigFlow;
@@ -16,19 +18,25 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
 {
     private readonly HWiNFOSharedMemoryService _service;
     private readonly HWiNFOVariableProvider _variables;
+    private readonly IPluginCatalogNotifier _catalogNotifier;
     private readonly WidgetRefreshOptions _refreshOptions = new();
     private readonly ILogger _logger;
     private IVariableApi? _hostVariables;
 
-    public PluginIntegration(ILogger logger)
+    public PluginIntegration(ILogger logger, IPluginCatalogNotifier catalogNotifier)
     {
         _logger = logger.ForContext<PluginIntegration>();
+        _catalogNotifier = catalogNotifier;
         logger.Information("[HWiNFODeck] Plugin loaded");
         logger.Information("[HWiNFODeck] Version: {ManifestVersion}", ReadManifestVersion());
         logger.Information("[HWiNFODeck] Loaded from: {AssemblyPath}", typeof(PluginIntegration).Assembly.Location);
         _service = new HWiNFOSharedMemoryService(logger);
+        _service.CatalogChanged += OnSensorCatalogChanged;
         _variables = new HWiNFOVariableProvider(_service, logger);
     }
+
+    private void OnSensorCatalogChanged() =>
+        _catalogNotifier.CatalogChanged(CapabilityKinds.Variables, "HWiNFO sensor inventory changed");
 
     // The manifest is the version source of truth: the assembly version is only the SDK default, and
     // the release workflow rewrites the manifest from the release tag, so neither tracks a release.
@@ -53,6 +61,11 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
     public IReadOnlyList<VariableDefinition> Variables => _variables.Variables;
     public IReadOnlyList<VariableDefinition> DeclaredVariables => _variables.DeclaredVariables;
     public bool VariablesDependOnConfiguration => _variables.VariablesDependOnConfiguration;
+    public bool SupportsCatalog => _variables.SupportsCatalog;
+    public bool SupportsPush => _variables.SupportsPush;
+    public bool SupportsSearch => _variables.SupportsSearch;
+    public string CatalogName => _variables.CatalogName;
+    public int? CatalogEntryCount => _variables.CatalogEntryCount;
     public ValueTask<VariableReading> ReadAsync(string localId, CancellationToken cancellationToken) =>
         _variables.ReadAsync(localId, cancellationToken);
     public ValueTask<VariableWriteResult> SetValueAsync(string localId, object? value, CancellationToken cancellationToken) =>
@@ -166,6 +179,15 @@ public sealed class PluginIntegration : IPluginIntegration, IVariableProvider, I
             return GaugeScale.DefaultRefreshSeconds;
         }
     }
-    public async Task ShutdownAsync() => await _service.DisposeAsync();
-    public ValueTask DisposeAsync() => _service.DisposeAsync();
+    public async Task ShutdownAsync()
+    {
+        _service.CatalogChanged -= OnSensorCatalogChanged;
+        await _service.DisposeAsync();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _service.CatalogChanged -= OnSensorCatalogChanged;
+        return _service.DisposeAsync();
+    }
 }
