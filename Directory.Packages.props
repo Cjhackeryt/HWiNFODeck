@@ -3,15 +3,9 @@
     <PropertyGroup>
         <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
         <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-        <!-- The Macro Deck packages float to the newest published version, so no release version is
-             pinned anywhere in this repository. -->
-        <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
         <!-- One knob for every Macro Deck package, so a build against a locally packed SDK is
              `dotnet build -p:MacroDeckSdkVersion=<version>` and nothing else - see README.md. -->
-           <!-- Pinned, not floating: the gauge widget needs the beta SDK surface (UiGauge and the
-               widget configuration nodes). A lexical float would resolve 3.0.0-preview.10, which is
-               API-older and lacks them. -->
-           <MacroDeckSdkVersion Condition="'$(MacroDeckSdkVersion)' == ''">3.0.0-beta.19</MacroDeckSdkVersion>
+        <MacroDeckSdkVersion Condition="'$(MacroDeckSdkVersion)' == ''">3.0.0</MacroDeckSdkVersion>
     </PropertyGroup>
 
     <ItemGroup>

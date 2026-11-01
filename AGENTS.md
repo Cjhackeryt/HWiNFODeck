@@ -3,85 +3,34 @@
 This file must be kept up to date. When a rule here stops matching reality, or a new rule emerges from
 work in this repository, update this file as part of that change rather than leaving it to drift.
 
-This repository is the **starting point for a Macro Deck 3 out-of-process plugin**, and it is
-simultaneously the content of the `dotnet new macrodeck-plugin` template package. The plugin under
-`src/HWiNFODeck/` is deliberately minimal: one integration and one example action,
-`LogMessageAction`, which exists solely to show the localized shape of an action end to end. It is
-meant to be replaced by the plugin's real first action, not grown into a second sample. Nothing else
-is demonstrated here.
-
-Worked examples of every capability live in the
-[sample plugins repository](https://github.com/Macro-Deck-App/Macro-Deck-Sample-Plugins), not here.
-Read from there rather than growing this template.
-
-[README.md](README.md) is the human-facing guide: how to build, how to run against a real host, how to
-pack. This file is the rule set for writing the plugin. Read it before changing code. The template
-package itself is covered by
-[packaging/README.md](https://github.com/Macro-Deck-App/Macro-Deck-Plugin-Template/blob/main/packaging/README.md).
+This repository contains HWiNFODeck, an existing Macro Deck 3 plugin. It is not the
+`dotnet new macrodeck-plugin` template package. [README.md](README.md) is the human-facing guide for
+building, running and packaging this plugin. This file contains the rules for changing its code.
 
 ## Orientation
 
 ```
 src/HWiNFODeck/
-  Program.cs             builder chain - a few lines and a RunAsync
-  manifest.json          identity, icon, per-platform entrypoints
-  macrodeck-build.json   one publish target per declared entrypoint
-  PluginIntegration.cs   the integration: lifecycle and capability opt-ins
-  LogMessageAction.cs    the example action, localized end to end
-  Localization/Strings.resx   default-culture strings; Strings.<tag>.resx per language
-  Assets/icon.svg        the icon the manifest declares
-  Properties/launchSettings.json   the single real-host debug profile
+  HWiNFOSharedMemoryService.cs   shared-memory polling and parsing
+  HWiNFOVariableProvider.cs      fixed and per-reading variables
+  SensorAliases.cs               convenient CPU, GPU and drive aliases
+  GaugeWidget.cs                 gauge widget capability
+  PluginIntegration.cs           capability registration and lifecycle
+  manifest.json                  plugin identity and entrypoints
+  macrodeck-build.json           Windows publish target
+  Localization/Strings.resx      default-culture strings
 tests/HWiNFODeck.Tests/
-  PluginIntegrationTests.cs   the plugin builds, the action runs, the catalog is wired
+  PluginIntegrationTests.cs      integration, variables, aliases and widget behavior
 ```
 
-The template repository carries two more directories that a generated plugin does not:
-`.template.config/` (the `dotnet new` definition) and `packaging/` (the template package project, kept
-out of the solution on purpose).
+The plugin identity and release version live in `src/HWiNFODeck/manifest.json`. All Macro Deck package
+versions are centrally controlled by `MacroDeckSdkVersion` in `Directory.Packages.props`; keep the
+release workflow's CLI version in sync with it. `MacroDeck.Plugin.Analyzers` is referenced with
+`PrivateAssets="all"` and should remain enabled.
 
-`.template.config/content/` holds the *only* deliberate copies in this repository: conditional variants
-of `manifest.json` and `macrodeck-build.json`. `dotnet new` selects platforms and omits unsupplied
-optional fields with `//#if` markers, which would make the checked-in files invalid JSON and break
-`macrodeck-plugin validate`, `build` and the manifest reader. So the files under `src/` stay valid and
-the templated variants replace them during generation. **Change one, change the other**: rendering the
-template with default parameters must reproduce the `src/` files byte for byte, which CI checks.
-
-Authoritative upstream documentation, in the
-[Macro Deck 3 repository](https://github.com/Macro-Deck-App/Macro-Deck-3/tree/main/docs/plugin-development):
-`sdk-reference.md` (every contract type), `plugin-hosting.md` (builder, registration modes, manifest,
-artifact, environment variables), `capability-parity.md` (what behaves differently out of process),
-`analyzers.md`, `conformance.md`, `testing-plugins.md`, `cli.md`. When a question is about SDK behaviour
-rather than this template's own code, look there rather than guessing.
-
-## Before you start on a fresh plugin
-
-`dotnet new macrodeck-plugin` sets the identity and the publication metadata for you:
-
-```bash
-dotnet new macrodeck-plugin -n <Name> --pluginId <id> --pluginName "<Display name>" \
-  --publisher "<Publisher>" --repository <url> --platforms win-x64 --platforms osx-arm64
-```
-
-`--publisher`, `--description`, `--license`, `--repository`, `--homepage` and `--platforms` all land in
-`manifest.json` natively, and `--platforms` drives `macrodeck-build.json` with it. `--repository` and
-`--homepage` are omitted rather than written empty when not supplied, because the schema requires an
-absolute URL. `macrodeck-plugin new` collects the same values and passes them through.
-
-A repository *cloned* from this template still carries the template's identity, so fix that first, in
-one change:
-
-1. `manifest.json` - `id` (reverse-domain, lowercase, at least two dot-joined kebab segments, e.g.
-   `com.example.my-plugin`), `name`, `version`, `description`, `publisher.name`, and `entrypoints` plus
-   the matching `macrodeck-build.json` targets for the platforms you actually ship.
-2. Rename the project, the test project, the solution file and the namespace.
-3. Replace `Assets/icon.svg`. The manifest's `icon` path is the single source of truth and the host
-   reads that file directly - there is no icon code to change.
-4. Replace `LogMessageAction` with the plugin's real first action, and its keys in
-   `Localization/Strings.resx` with real ones.
-
-`MacroDeck.Plugin.Analyzers` is already referenced with `PrivateAssets="all"` - 13 compile-time
-diagnostics that catch most of the mistakes below while you type, plus the `[MacroDeckSdkUsage]`
-attribute the host reads to report real deprecation usage instead of inferring it. Keep it.
+For SDK behavior, use the authoritative documentation in the
+[Macro Deck repository](https://github.com/Macro-Deck-App/Macro-Deck/tree/main/docs), especially the
+plugin development, compatibility, deprecation and migration references. Do not guess SDK contracts.
 
 ## The rules that make a plugin clean
 
@@ -313,15 +262,8 @@ it after any change to capability shape, cancellation handling or the manifest, 
 check going from pass to fail as a blocking regression. Most checks `SKIP` until the plugin declares
 capabilities.
 
-The Macro Deck packages float to the newest published version, so the commands above need no version
-argument. Only to test against SDK surface that is not published yet, pack it into `local-feed/` and
-pass `-p:MacroDeckSdkVersion=<version>` - see "Building against a local SDK build" in
-[README.md](README.md).
-
-Working in the template repository itself rather than in a plugin generated from it? Changing its shape
-(files, names, `.template.config/template.json`, `packaging/`) also needs a generated-project check -
-see
-[packaging/README.md](https://github.com/Macro-Deck-App/Macro-Deck-Plugin-Template/blob/main/packaging/README.md).
+All Macro Deck package versions are pinned together by `MacroDeckSdkVersion` in
+`Directory.Packages.props`. Keep `.github/workflows/release.yml`'s CLI version at that same version.
 
 ## Packing a plugin release
 
@@ -346,9 +288,9 @@ match.
 
 - Work on a branch, not directly on `main`. Use `feature/`, `fix/`, `refactor/`, `chore/`, `docs/` or
   `ci/` with a short kebab-case description, and an issue number where one exists.
-- Publishing the template package requires a pushed semantic-version tag such as
-  `v3.0.0-preview.3`. The publish workflow removes the leading `v` and uses the rest as the NuGet
-  package version. A push to `main` alone never publishes.
+- Publishing a plugin build requires a GitHub release with a semantic-version tag matching the
+  version in `src/HWiNFODeck/manifest.json`. The release workflow submits that build to the Macro Deck
+  Platform; do not publish or release without explicit approval.
 - Keep changes focused; no unrelated reformatting.
 - Do not push or open a pull request unless asked.
 - Do not add AI attribution or co-author trailers.

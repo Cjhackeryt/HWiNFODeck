@@ -434,23 +434,54 @@ public sealed class SensorAliasesTests
 		Assert.That(SensorAliases.IsGpuSensor("[dGPU #0]: AMD Radeon RX 6600"), Is.True);
 		Assert.That(SensorAliases.IsGpuSensor("[GPU #1]: NVIDIA GeForce RTX 5070 Ti"), Is.True);
 		Assert.That(SensorAliases.IsGpuSensor("GPU [#0]: NVIDIA GeForce RTX 4070 Ti"), Is.True);
+		Assert.That(SensorAliases.IsGpuSensor("AMD Radeon RX 6800"), Is.True);
 		Assert.That(SensorAliases.IsGpuSensor("CPU [#0]: AMD Ryzen 7 5800X3D"), Is.False);
 		Assert.That(SensorAliases.IsGpuSensor("Motherboard GPU controller"), Is.False);
 	}
 
 	[Test]
-	public void Gpu_aliases_continue_to_use_the_first_reported_gpu()
+	public void Gpu_aliases_resolve_when_the_sensor_name_is_the_adapter_model()
 	{
 		HWiNFOSensor[] readings =
 		[
-			Reading("[dGPU #0]: AMD Radeon RX 6600", "GPU Temperature", "°C", 55, 10, 1),
-			Reading("[GPU #1]: NVIDIA GeForce RTX 5070 Ti", "GPU Temperature", "°C", 42, 11, 1)
+			Reading("AMD Radeon RX 6800", "GPU Temperature", "°C", 55, 10, 1)
 		];
 
-		Assert.That(SensorAliases.FindGpuName(readings), Is.EqualTo("[dGPU #0]: AMD Radeon RX 6600"));
+		Assert.That(SensorAliases.FindGpuName(readings), Is.EqualTo("AMD Radeon RX 6800"));
 		Assert.That(
 			SensorAliases.FindGpuReading(readings, SensorAliases.GpuTemperatureLabels)?.Value,
 			Is.EqualTo(55));
+	}
+
+	[Test]
+	public void Gpu_aliases_prefer_the_discrete_gpu_when_the_integrated_gpu_is_reported_first()
+	{
+		HWiNFOSensor[] readings =
+		[
+			Reading("[iGPU #0]: AMD Radeon 760M", "GPU Temperature", "°C", 45, 10, 1),
+			Reading("AMD Radeon RX 6800", "GPU Temperature", "°C", 55, 11, 1),
+			Reading("AMD Radeon RX 6800", "GPU Hot Spot Temperature", "°C", 72, 11, 2)
+		];
+
+		Assert.That(SensorAliases.FindGpuName(readings), Is.EqualTo("AMD Radeon RX 6800"));
+		Assert.That(
+			SensorAliases.FindGpuReading(readings, SensorAliases.GpuTemperatureLabels)?.Value,
+			Is.EqualTo(55));
+		Assert.That(
+			SensorAliases.FindGpuReading(readings, SensorAliases.GpuHotSpotTemperatureLabels)?.Value,
+			Is.EqualTo(72));
+	}
+
+	[Test]
+	public void Gpu_aliases_are_unavailable_when_only_an_integrated_gpu_is_present()
+	{
+		HWiNFOSensor[] readings =
+		[
+			Reading("[iGPU #0]: AMD Radeon 760M", "GPU Temperature", "°C", 45, 10, 1)
+		];
+
+		Assert.That(SensorAliases.FindGpuName(readings), Is.Null);
+		Assert.That(SensorAliases.FindGpuReading(readings, SensorAliases.GpuTemperatureLabels), Is.Null);
 	}
 
 	[Test]
@@ -466,7 +497,7 @@ public sealed class SensorAliasesTests
 	}
 
 	[Test]
-	public void The_gpu_name_is_the_first_gpu_sensor()
+	public void The_gpu_name_is_the_first_discrete_gpu_sensor()
 	{
 		Assert.That(
 			SensorAliases.FindGpuName(NvidiaGpuReadings),

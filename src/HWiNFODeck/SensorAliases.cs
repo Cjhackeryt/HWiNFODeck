@@ -108,21 +108,21 @@ internal static class SensorAliases
     }
 
     /// <summary>
-    /// The reading of the first GPU sensor whose label is one of <paramref name="labels"/>, tried in
-    /// order. <paramref name="unitOk"/> tells apart readings HWiNFO publishes twice under one label, such
-    /// as a fan's RPM and its duty cycle in percent.
+    /// The reading of the first discrete GPU sensor whose label is one of <paramref name="labels"/>,
+    /// tried in order. <paramref name="unitOk"/> tells apart readings HWiNFO publishes twice under one
+    /// label, such as a fan's RPM and its duty cycle in percent.
     /// </summary>
     public static HWiNFOSensor? FindGpuReading(
         IReadOnlyList<HWiNFOSensor> readings,
         string[] labels,
         Func<string, bool>? unitOk = null)
     {
-        var firstGpu = readings.FirstOrDefault(x => IsGpuSensor(x.SensorName));
-        if (firstGpu is null)
+        var discreteGpu = readings.FirstOrDefault(x => IsDiscreteGpuSensor(x.SensorName));
+        if (discreteGpu is null)
             return null;
 
         var gpuReadings = readings
-            .Where(x => x.SensorId == firstGpu.SensorId && IsGpuSensor(x.SensorName))
+            .Where(x => x.SensorId == discreteGpu.SensorId && IsDiscreteGpuSensor(x.SensorName))
             .ToArray();
         foreach (var label in labels)
         {
@@ -137,13 +137,24 @@ internal static class SensorAliases
     }
 
     public static string? FindGpuName(IReadOnlyList<HWiNFOSensor> readings) =>
-        readings.FirstOrDefault(x => IsGpuSensor(x.SensorName))?.SensorName;
+        readings.FirstOrDefault(x => IsDiscreteGpuSensor(x.SensorName))?.SensorName;
+
+    public static bool IsDiscreteGpuSensor(string sensorName) =>
+        sensorName.StartsWith("[dGPU ", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("Radeon RX", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("Radeon Pro", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("Intel Arc", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsGpuSensor(string sensorName) =>
         sensorName.StartsWith("GPU", StringComparison.OrdinalIgnoreCase) ||
         sensorName.StartsWith("[GPU ", StringComparison.OrdinalIgnoreCase) ||
         sensorName.StartsWith("[dGPU ", StringComparison.OrdinalIgnoreCase) ||
-        sensorName.StartsWith("[iGPU ", StringComparison.OrdinalIgnoreCase);
+        sensorName.StartsWith("[iGPU ", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("Radeon", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
+        sensorName.Contains("Intel Arc", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsTemperatureUnit(string unit) => unit.Contains('C', StringComparison.OrdinalIgnoreCase);
 
