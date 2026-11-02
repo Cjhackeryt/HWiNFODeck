@@ -7,9 +7,12 @@
   </picture>
 </a>
 
-HWiNFODeck is an unsigned Macro Deck 3 development plugin that exposes HWiNFO sensor
-readings through the HWiNFO Shared Memory Interface. HWiNFO is installed separately;
-the plugin does not bundle HWiNFO or another hardware-monitoring library.
+HWiNFODeck provides live HWiNFO sensor variables and gauge widgets for Macro Deck 3.
+It is Windows-only and requires HWiNFO to be installed with Shared Memory enabled.
+The plugin starts disabled; open its settings and save once to enable it.
+
+HWiNFO is installed separately; the plugin does not bundle HWiNFO or another
+hardware-monitoring library.
 
 ## Development
 

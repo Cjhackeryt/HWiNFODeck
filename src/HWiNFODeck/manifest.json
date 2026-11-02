@@ -19,6 +19,12 @@
   "publisher": {
     "name": "cjhackeryt"
   },
+  "ai": {
+    "interaction": false,
+    "generatedContent": false,
+    "generatedAssets": true,
+    "services": []
+  },
   "license": "MIT",
   "compatibility": {
     "macroDeck": ">=3.0.0"
