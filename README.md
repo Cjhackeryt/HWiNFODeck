@@ -30,7 +30,7 @@ Create the unsigned development package with the installed Macro Deck tooling:
 macrodeck-plugin build --source .\src\HWiNFODeck --output .\artifacts
 ```
 
-The current package version is `1.0.5`. Each release must increment the version
+The current package version is `1.0.6`. Each release must increment the version
 in `src/HWiNFODeck/manifest.json`, which is the plugin's single source of truth
 for the version.
 
